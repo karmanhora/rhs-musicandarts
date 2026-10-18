@@ -107,6 +107,14 @@ enabled = true
 subject = "Your password was changed"
 content_path = "./templates/password_changed_notification.html"
 
+# Sent after the address actually changes (not the "confirm your new email"
+# request above). Recipients are the old address; `.OldEmail` and `.Email`
+# (the new one) are the documented variables for this notification.
+[auth.email.notification.email_changed]
+enabled = true
+subject = "Your email address was changed"
+content_path = "./templates/email_changed_notification.html"
+
 # ----------------------------------------------------------------------------
 # Auth email transport.
 #

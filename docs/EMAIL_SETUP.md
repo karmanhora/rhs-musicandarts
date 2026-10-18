@@ -31,10 +31,14 @@ before enabling the invitation form in a production frontend; see
 | Email change | The address on an account is changed | `email_change.html` | `{{ .ConfirmationURL }}`, naming `{{ .Email }}` and `{{ .NewEmail }}` |
 | Reauthentication | A security-sensitive change asks the person to prove themselves again | `reauthentication.html` | `{{ .Token }}` only — a code, not a link |
 | Password changed notification | A user's password changes | `password_changed_notification.html` | `{{ .Email }}` and `{{ .SiteURL }}`; enable the notification in Supabase Auth |
+| Email address changed notification | The address on an account **actually changes** — not the request to confirm a new one | `email_changed_notification.html` | `{{ .OldEmail }}`, `{{ .Email }}` (the new address) and `{{ .SiteURL }}`; enable the notification in Supabase Auth |
 
-Security notifications are separate from the password-reset email and must be
-enabled in the Supabase project before they are sent. The password-changed
-notification is enabled in this repository's `supabase/config.toml`. Only the
+Security notifications are separate from the authentication emails above and
+must be enabled in the Supabase project before they are sent. Both the
+password-changed and email-changed notifications are enabled in this
+repository's `supabase/config.toml` and on the live project. The email-change
+*confirmation request* is a different email (`email_change.html`); the
+notification covered here is the one sent after the swap succeeds. Only the
 variables in the table above are used; they are documented Supabase variables.
 
 ## 2. Applying them
@@ -48,23 +52,30 @@ which would turn Google sign-in off and drop the email limit to 2/hour.
 `supabase/config.toml` is a record of intent, not a push source.
 
 **Dashboard.** Authentication → Emails → Templates: paste the subject from
-`supabase/config.toml` and the contents of the matching file. For the password
-change notification, enable **Password changed** in the project's Auth
-notification settings, then set its subject and paste
-`supabase/templates/password_changed_notification.html` in the notification
-template editor. Notification enablement is project-level; saving the template
-alone does not turn it on. The same settings can be applied with the Management
-API (`PATCH /v1/projects/<ref>/config/auth`), which changes only the fields sent —
-that is how SMTP and the redirect URLs were set on 2026-10-18. Keep this file in
-step by hand afterwards.
+`supabase/config.toml` and the contents of the matching file. For the security
+notifications, open the project's Auth notification settings and enable both
+**Password changed** and **Email address changed**, then set each subject and
+paste its file:
 
-**Template drift, as of 2026-10-18.** The live project still runs Supabase's
-default templates for everything except **confirmation**, which now matches
-`supabase/templates/confirmation.html` (applied through the Management API). The
-other branded templates are **not** applied on purpose: `recovery.html` and
+- `supabase/templates/password_changed_notification.html`
+- `supabase/templates/email_changed_notification.html`
+
+Notification enablement is project-level; saving a template alone does not turn
+it on. The same settings can be applied with the Management API
+(`PATCH /v1/projects/<ref>/config/auth`), which changes only the fields sent —
+that is how SMTP, the redirect URLs and both notifications were set on
+2026-10-18. Keep this file in step by hand afterwards.
+
+**Template drift, as of 2026-10-18.** The live project matches this repository
+for **confirmation**, **password changed** and **email address changed**
+(`confirmation.html`, `password_changed_notification.html`,
+`email_changed_notification.html`), all applied through the Management API. The
+remaining branded templates are **not** applied on purpose: `recovery.html` and
 `magic_link.html` tell the reader to type the code, and the app has no code path
 for those flows yet — applying them would promise something that does not work.
-Apply each one only together with its matching screen.
+`email_change.html` (the request to confirm a new address) and the invite and
+reauthentication templates still need their matching screens checked before they
+are applied.
 
 If preview and production are separate Supabase projects, apply this to **both**.
 They are separate environments; an email template is not inherited.
@@ -85,10 +96,9 @@ built-in sender, and not Brevo or SendGrid. The settings:
 | Sender name | `RHS Music & Arts` |
 
 `supabase/config.toml` carries the same block with
-`pass = "env(RESEND_API_KEY)"`, so the key never enters git. `supabase config
-push` resolves that from the environment (the CLI also reads the project-root
-`.env`); if `RESEND_API_KEY` is not set, configure SMTP in the dashboard rather
-than pushing a blank password.
+`pass = "env(RESEND_API_KEY)"`, so the key never enters git. The live project
+was set through the Management API; use the dashboard or that API for future
+changes, and do not `config push` (see §2).
 
 Resend refuses any From address whose domain is not verified in its dashboard,
 so verify `rhsattendance.org` there and add the DNS records it asks for (SPF,
