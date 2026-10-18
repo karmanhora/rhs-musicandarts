@@ -66,6 +66,17 @@ test.describe("public pages", () => {
     });
   }
 
+  test("privacy policy is public and carries no placeholders", async ({ page }) => {
+    await installMocks(page);
+    await page.goto("/privacy");
+    await expect(page.getByRole("heading", { level: 1, name: "Privacy Policy" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: /Google Sign-In/ })).toBeVisible();
+    await expect(page.locator('a[href="mailto:privacy@rhsattendance.org"]')).toBeVisible();
+    const text = await page.locator("main").innerText();
+    // A published policy must never ship with `[TO BE SET]`-style placeholders.
+    expect(text).not.toMatch(/\[[^\]]+\]/);
+  });
+
   test("masthead does not touch the top edge of the viewport", async ({ page }) => {
     await installMocks(page);
     await page.setViewportSize({ width: 390, height: 844 });

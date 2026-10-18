@@ -488,6 +488,14 @@ export function AuthScreen({ mode }: { mode: AuthMode }) {
           >
             Continue with Google
           </Button>
+          {/* What Google actually shares, stated where the choice is made. */}
+          <p className="mt-2 text-center text-[11px] leading-relaxed text-[var(--cue-muted)]">
+            Google sign-in shares only your name, email address, and Google account ID. We never
+            request access to your Gmail, Google Calendar, or Drive.{" "}
+            <Link to="/privacy" className="font-semibold underline underline-offset-2">
+              Privacy Policy
+            </Link>
+          </p>
         </>
       ) : null}
 

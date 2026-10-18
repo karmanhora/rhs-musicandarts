@@ -110,3 +110,27 @@ The website change closes only the "notices not published" gap.
 
 > None of this makes the app "compliant." It publishes accurate drafts and makes
 > the notices reachable; the legal review and agreements are still required.
+
+## 5. 2026-10-18 — privacy policy published in full
+
+Google OAuth verification rejected the earlier draft for insufficient detail. The
+privacy policy at `/privacy` was rewritten from the implementation and is now the
+published, effective text (no draft banner, no placeholders):
+
+- Effective date **2026-10-18**; sections cover what the App is and who it is for,
+  every category of information collected, Google Sign-In (authentication only,
+  no Calendar/Gmail/Drive scopes), the separate **public iCal** calendar import,
+  use, role-based visibility, providers (Supabase, Vercel, Resend, Google),
+  row-level security and TLS, actual retention and account-deletion behaviour,
+  deletion/access requests, children and school records, and session storage.
+- Contact is **privacy@rhsattendance.org**, supplied by the owner for this purpose.
+  The mailbox must be created and monitored; it is not the `noreply@` sending
+  address.
+- It no longer claims a **written school agreement**, district approval, or legal
+  compliance. The earlier draft's "under a written agreement" sentence was false.
+- The policy deliberately states that attendance records are **de-identified, not
+  erased**, on account deletion, matching `prepare_account_deletion()`.
+- `purge_stale_program_invites()` is still unscheduled, so the policy does not
+  promise a fixed deletion window for unaccepted invitations.
+- The Terms of Use page is unchanged and still a draft with its own effective-date
+  placeholder; it is a separate document awaiting review.
