@@ -94,6 +94,9 @@ export function AuthScreen({ mode }: { mode: AuthMode }) {
   /** The one error that has an action attached ("Resend the link"). */
   const [needsConfirmation, setNeedsConfirmation] = useState(false);
   const [sent, setSent] = useState(false);
+  /** The numeric fallback from the confirmation email ({{ .Token }}). */
+  const [code, setCode] = useState("");
+  const [codeBusy, setCodeBusy] = useState(false);
 
   const copy = AUDIENCE_COPY[audience];
   const headline = MODE_COPY[mode];
@@ -110,6 +113,8 @@ export function AuthScreen({ mode }: { mode: AuthMode }) {
     setNeedsConfirmation(false);
     setSent(false);
     setAwaitingEmail(false);
+    setCode("");
+    setCodeBusy(false);
   }, [mode]);
 
   /** Remembered in the URL (shareable) and the session (survives a reload). */
@@ -191,6 +196,30 @@ export function AuthScreen({ mode }: { mode: AuthMode }) {
     toast.success("Sent — check your inbox.");
   }
 
+  /**
+   * The confirmation link is single-use. If a mail scanner (or a second tap)
+   * has already spent it, the code in the same email is still valid — that is
+   * what the template's "or type this code" line is for. The project's
+   * `mailer_otp_length` is 8, so accept up to 10 rather than assuming six.
+   */
+  async function confirmWithCode() {
+    setError(null);
+    const clean = code.replace(/\s+/g, "");
+    if (!/^\d{4,10}$/.test(clean)) {
+      setError("Enter the code from the confirmation email.");
+      return;
+    }
+    setCodeBusy(true);
+    const { error: failure } = await auth.confirmEmail(email, clean);
+    setCodeBusy(false);
+    if (failure) {
+      setError(failure);
+      return;
+    }
+    toast.success("Email confirmed.");
+    navigate(afterAuth ?? "/", { replace: true });
+  }
+
   async function continueWithGoogle() {
     setError(null);
     setBusy(true);
@@ -239,6 +268,37 @@ export function AuthScreen({ mode }: { mode: AuthMode }) {
     );
   }
 
+  const codeEntry = (
+    <div className="rounded-[var(--radius-panel)] border border-[var(--cue-line)] bg-[var(--cue-raised)] p-4">
+      <p className="type-label text-[var(--cue-green)]">Have the code?</p>
+      <p className="type-meta mt-1">
+        Type the code from the same email. It still works after the link has been opened.
+      </p>
+      <div className="mt-3 space-y-3">
+        <Field label="Confirmation code">
+          <Input
+            inputMode="numeric"
+            autoComplete="one-time-code"
+            pattern="[0-9]*"
+            maxLength={10}
+            value={code}
+            onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
+            placeholder="12345678"
+          />
+        </Field>
+        <Button
+          type="button"
+          block
+          variant="secondary"
+          loading={codeBusy}
+          onClick={() => void confirmWithCode()}
+        >
+          Confirm with code
+        </Button>
+      </div>
+    </div>
+  );
+
   if (awaitingEmail) {
     return (
       <AuthLayout mode={mode}>
@@ -256,6 +316,7 @@ export function AuthScreen({ mode }: { mode: AuthMode }) {
             <Alert tone="error">{error}</Alert>
           </div>
         ) : null}
+        <div className="mt-4">{codeEntry}</div>
         <div className="mt-6 space-y-3">
           <Button block variant="secondary" loading={busy} onClick={() => void resend()}>
             Send it again
@@ -338,6 +399,9 @@ export function AuthScreen({ mode }: { mode: AuthMode }) {
       </div>
 
       <form className="mt-6 space-y-4" onSubmit={(e) => void submit(e)}>
+        {isSignIn && auth.authLinkError ? (
+          <Alert tone="warn">{auth.authLinkError}</Alert>
+        ) : null}
         {error ? <Alert tone="error">{error}</Alert> : null}
 
         <Field label="Email">
@@ -395,10 +459,18 @@ export function AuthScreen({ mode }: { mode: AuthMode }) {
         </Button>
 
         {needsConfirmation ? (
-          <Button block variant="secondary" loading={busy} onClick={() => void resend()}>
+          <Button
+            type="button"
+            block
+            variant="secondary"
+            loading={busy}
+            onClick={() => void resend()}
+          >
             Resend the confirmation email
           </Button>
         ) : null}
+
+        {isSignIn && (auth.authLinkError || needsConfirmation) ? codeEntry : null}
       </form>
 
       {supportsGoogle ? (

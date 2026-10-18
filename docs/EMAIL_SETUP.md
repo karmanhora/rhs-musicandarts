@@ -58,6 +58,14 @@ API (`PATCH /v1/projects/<ref>/config/auth`), which changes only the fields sent
 that is how SMTP and the redirect URLs were set on 2026-10-18. Keep this file in
 step by hand afterwards.
 
+**Template drift, as of 2026-10-18.** The live project still runs Supabase's
+default templates for everything except **confirmation**, which now matches
+`supabase/templates/confirmation.html` (applied through the Management API). The
+other branded templates are **not** applied on purpose: `recovery.html` and
+`magic_link.html` tell the reader to type the code, and the app has no code path
+for those flows yet — applying them would promise something that does not work.
+Apply each one only together with its matching screen.
+
 If preview and production are separate Supabase projects, apply this to **both**.
 They are separate environments; an email template is not inherited.
 
@@ -183,6 +191,14 @@ migration that depends on it.
 - A confirmation that arrives but whose link does nothing is almost always a
   redirect-URL problem, not a template one. A missing subject line means the
   template was saved without its subject.
+- **A confirmation link is single-use.** A mail-security scanner, a link preview
+  or a second tap can spend it before the person does; the next request lands on
+  the Site URL with `#error=access_denied&error_code=otp_expired`, while the
+  account is already confirmed and password sign-in works. The app catches that
+  code, sends the person to `/sign-in`, and says so. The confirmation email also
+  carries `{{ .Token }}`, and the sign-in screen accepts it. This project's
+  `mailer_otp_length` is **8**, not the default 6, so the field accepts 4–10
+  digits — do not hardcode a length.
 
 ## 6. What this does not cover
 

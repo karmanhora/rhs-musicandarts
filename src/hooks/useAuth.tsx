@@ -37,6 +37,13 @@ export interface AuthState {
    * person is never left guessing whether the confirmation link worked.
    */
   emailVerified: boolean;
+  /**
+   * Set when the page was opened from an email link Supabase had already
+   * consumed (`otp_expired` / "Email link is invalid or has expired"). The
+   * account is usually confirmed already; the notice says to sign in or use
+   * the code from the same email.
+   */
+  authLinkError: string | null;
   /** Name the account was created with, if we ever asked for one. */
   displayName: string | null;
   /**
@@ -57,6 +64,13 @@ export interface AuthState {
   sendPasswordReset: (email: string) => Promise<{ error: string | null }>;
   /** Re-send the sign-up confirmation; email confirmation is on for this project. */
   resendConfirmation: (email: string) => Promise<{ error: string | null }>;
+  /**
+   * Confirm with the `{{ .Token }}` code from the confirmation email. The
+   * link in that email is single-use, and a mail scanner or a second click can
+   * spend it; the code is the fallback the template promises. Its length is the
+   * project's `mailer_otp_length` (8 on this project), so never hardcode six.
+   */
+  confirmEmail: (email: string, code: string) => Promise<{ error: string | null }>;
   updatePassword: (password: string) => Promise<{ error: string | null }>;
   /**
    * Start a change of the sign-in email. Supabase Auth owns the address, so
@@ -113,6 +127,10 @@ function readable(message: string): string {
       "We couldn't send that email — that's on our side, not your account. Try again in a minute, or use Continue with Google with this same address to get in now.",
     ],
     [
+      /token has expired|invalid.*(token|otp)|otp.*(expired|invalid)/i,
+      "That code is wrong or has expired. Check the email, or send yourself a new one.",
+    ],
+    [
       /security purposes|only request this after/i,
       "Just a moment — wait a few seconds before trying that again.",
     ],
@@ -126,6 +144,39 @@ function readable(message: string): string {
   }
   return text || "Something went wrong. Try again.";
 }
+
+/**
+ * A confirmation or recovery link that has already been used lands with
+ * `#error=access_denied&error_code=otp_expired` (or a query-string equivalent).
+ * Supabase has already confirmed the account on the first request, so this is
+ * not a failure to hide: capture the code before supabase-js clears the URL,
+ * remove it, and return a sentence the sign-in screen can show. Only the
+ * one-time-token codes are treated this way — an OAuth `access_denied` is a
+ * different refusal and keeps its existing path.
+ */
+function takeExpiredLinkNotice(): string | null {
+  if (typeof window === "undefined") return null;
+  const url = new URL(window.location.href);
+  const hash = new URLSearchParams(url.hash.replace(/^#/, ""));
+  const read = (key: string) => hash.get(key) ?? url.searchParams.get(key);
+  const errorCode = read("error_code");
+  const description = read("error_description") ?? "";
+  const expired =
+    errorCode === "otp_expired" ||
+    /email link is invalid or has expired|one-time token not found/i.test(description);
+  if (!expired) return null;
+
+  for (const key of ["error", "error_code", "error_description"]) {
+    hash.delete(key);
+    url.searchParams.delete(key);
+  }
+  url.hash = hash.toString();
+  window.history.replaceState(window.history.state, "", url.toString());
+
+  return "That email link has already been used or has expired. If your address is already confirmed, sign in below. If not, the code from the same email still works — or send yourself a new link.";
+}
+
+const initialAuthLinkError = takeExpiredLinkNotice();
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
@@ -268,6 +319,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return { error: error ? readable(error.message) : null };
   }, []);
 
+  const confirmEmail = useCallback(async (email: string, code: string) => {
+    const { error } = await supabase.auth.verifyOtp({
+      email: email.trim(),
+      token: code.replace(/\s+/g, ""),
+      type: "signup",
+    });
+    return { error: error ? readable(error.message) : null };
+  }, []);
+
   const updatePassword = useCallback(async (password: string) => {
     const { error } = await supabase.auth.updateUser({ password });
     return { error: error ? readable(error.message) : null };
@@ -337,6 +397,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       accountTypeLoading,
       accountTypeSetupError,
       emailVerified: Boolean(session?.user?.email_confirmed_at),
+      authLinkError: initialAuthLinkError,
       displayName:
         (session?.user?.user_metadata?.full_name as string | undefined)?.trim() || null,
       recovering,
@@ -347,6 +408,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       signOut,
       sendPasswordReset,
       resendConfirmation,
+      confirmEmail,
       updatePassword,
       updateEmail,
       signOutOthers,
@@ -366,6 +428,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       signOut,
       sendPasswordReset,
       resendConfirmation,
+      confirmEmail,
       updatePassword,
       updateEmail,
       signOutOthers,

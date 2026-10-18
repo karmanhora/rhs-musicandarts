@@ -1,4 +1,4 @@
-import { Navigate, Route, Routes } from "react-router-dom";
+import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { Splash } from "./components/Splash";
 import { ToastProvider } from "./components/ui";
 import { AuthProvider, useAuth } from "./hooks/useAuth";
@@ -29,6 +29,7 @@ export default function App() {
 
 function SessionRoutes() {
   const auth = useAuth();
+  const location = useLocation();
 
   // The stored session is being read (or, on a fresh visit, confirmed absent).
   if (auth.status === "loading") {
@@ -62,6 +63,16 @@ function SessionRoutes() {
   }
 
   if (auth.status === "signed-out") {
+    // A confirmation link that was already spent lands on the Site URL with
+    // `#error=access_denied&error_code=otp_expired`. The account is usually
+    // confirmed by then, so do not leave the person on the landing page with no
+    // explanation: the sign-in screen says what happened and offers the code
+    // fallback from the same email. `/reset-password` keeps its own expired-link
+    // panel, and every other path is left alone.
+    if (auth.authLinkError && location.pathname === "/") {
+      return <Navigate to="/sign-in" replace />;
+    }
+
     return (
       <Routes>
         <Route path="/" element={<WelcomeScreen />} />
