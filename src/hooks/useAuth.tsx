@@ -103,11 +103,11 @@ function readable(message: string): string {
       "Too many emails just now — wait a minute and try again.",
     ],
     // Delivery failed, not validation: GoTrue's transport answered a generic
-    // 500 — the built-in sender (which only reaches addresses inside the
-    // project's Supabase organization), or the SMTP relay refusing us for a
-    // reason of its own, such as exhausted SendGrid credits. "Error sending
-    // confirmation email" tells a student nothing and reads like their mistake,
-    // so name the side it is on and give the one route that needs no email.
+    // 500. The transport is Resend's SMTP relay, so this is Resend refusing us
+    // for a reason of its own — a domain that has not finished verifying, a
+    // revoked key, or a rate limit. "Error sending confirmation email" tells a
+    // student nothing and reads like their mistake, so name the side it is on
+    // and give the one route that needs no email.
     [
       /error sending [a-z ]*email/i,
       "We couldn't send that email — that's on our side, not your account. Try again in a minute, or use Continue with Google with this same address to get in now.",

@@ -5,6 +5,7 @@ import { createClient } from "npm:@supabase/supabase-js@2";
  * delete-account for the rationale). Override with APP_ORIGINS if needed.
  */
 const DEFAULT_ORIGINS = [
+  "https://rhsattendance.org",
   "https://redmond-music-arts-program-mandalora.vercel.app",
   "http://localhost:5173",
 ];
@@ -16,9 +17,11 @@ const allowedOrigins = new Set(
     .filter(Boolean)
 );
 
-// This app's Vercel production and preview hosts (production has no middle
-// token, a preview adds one). See delete-account for the rationale.
-const PROJECT_HOST = /^redmond(-[a-z0-9-]+)?-music-arts-program-mandalora\.vercel\.app$/i;
+// This app's custom domain, plus its Vercel production and preview hosts
+// (production has no middle token, a preview adds one). See delete-account for
+// the rationale.
+const PROJECT_HOST =
+  /^(?:rhsattendance\.org|redmond(-[a-z0-9-]+)?-music-arts-program-mandalora\.vercel\.app)$/i;
 
 function isAllowedOrigin(origin: string): boolean {
   if (allowedOrigins.has(origin)) return true;
@@ -137,7 +140,7 @@ Deno.serve(async (request: Request) => {
     const errorMessage = /already|registered|exists/i.test(inviteError.message)
       ? "That email already has an account. Share this program's join code so they can join."
       : /error sending invite email/i.test(inviteError.message)
-      ? "Supabase could not send the invitation. Verify the configured From address as a Sender Identity in SendGrid, then try again."
+      ? "Supabase could not send the invitation. Check that the From address's domain is verified with the email provider (Resend), then try again."
       : `Could not send the invitation: ${inviteError.message}`;
     return response({
       ok: false,

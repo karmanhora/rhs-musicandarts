@@ -42,7 +42,7 @@ import { createClient } from "npm:@supabase/supabase-js@2";
  * events arriving.
  */
 
-const DEFAULT_APP_URL = "https://redmond-music-arts-program-mandalora.vercel.app";
+const DEFAULT_APP_URL = "https://rhsattendance.org";
 
 /** The school's clock. Event times are stored as instants; a digest has to name them in local time. */
 const SCHOOL_TIME_ZONE = "America/Los_Angeles";
@@ -223,7 +223,7 @@ function groupByRecipient(rows: DueRow[]): Recipient[] {
   return [...byUser.values()];
 }
 
-async function sendWithSendGrid(
+async function sendWithResend(
   apiKey: string,
   from: { email: string; name: string },
   recipient: Recipient,
@@ -231,23 +231,23 @@ async function sendWithSendGrid(
   html: string,
   text: string
 ): Promise<{ ok: boolean; error?: string }> {
-  const response = await fetch("https://api.sendgrid.com/v3/mail/send", {
+  const response = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: {
       Authorization: `Bearer ${apiKey}`,
       "Content-Type": "application/json",
+      // Resend asks direct HTTP clients to identify themselves.
+      "User-Agent": "rhs-attendance-event-digest/1.0",
     },
     body: JSON.stringify({
-      personalizations: [{ to: [{ email: recipient.email, name: recipient.name }] }],
-      from,
+      from: `${from.name} <${from.email}>`,
+      to: [recipient.email],
       subject,
-      content: [
-        { type: "text/plain", value: text },
-        { type: "text/html", value: html },
-      ],
-      // A digest is not a promotion: keep it out of the promotional folder.
-      categories: ["event-digest"],
-      tracking_settings: { click_tracking: { enable: false }, open_tracking: { enable: false } },
+      html,
+      text,
+      // A digest is not a campaign. Resend has no per-message tracking switch —
+      // open/click tracking is a domain setting — so the domain keeps it off.
+      tags: [{ name: "category", value: "event-digest" }],
     }),
   });
 
@@ -255,9 +255,9 @@ async function sendWithSendGrid(
 
   let detail = `${response.status}`;
   try {
-    const body = (await response.json()) as { errors?: { message?: string }[] };
-    const first = body.errors?.[0]?.message;
-    if (first) detail = `${response.status} ${first}`;
+    const body = (await response.json()) as { message?: string; name?: string };
+    if (body.message) detail = `${response.status} ${body.message}`;
+    else if (body.name) detail = `${response.status} ${body.name}`;
   } catch {
     /* a non-JSON error body adds nothing */
   }
@@ -274,9 +274,12 @@ Deno.serve(async (request: Request) => {
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL");
   const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-  const sendgridKey = Deno.env.get("SENDGRID_API_KEY");
-  const fromEmail = Deno.env.get("SENDGRID_FROM") ?? Deno.env.get("DIGEST_FROM_EMAIL");
-  const fromName = Deno.env.get("DIGEST_FROM_NAME") ?? "Redmond High School Music";
+  const resendKey = Deno.env.get("RESEND_API_KEY");
+  // An empty secret is not a configured one: with `??`, DIGEST_FROM_NAME= would
+  // build a From header with no display name and RESEND_FROM= would skip the
+  // fallback. `||` treats blank as absent.
+  const fromEmail = Deno.env.get("RESEND_FROM") || Deno.env.get("DIGEST_FROM_EMAIL");
+  const fromName = Deno.env.get("DIGEST_FROM_NAME") || "RHS Music & Arts";
   const appUrl = (Deno.env.get("PUBLIC_APP_URL") ?? DEFAULT_APP_URL).replace(/\/+$/, "");
 
   if (!supabaseUrl || !serviceRoleKey) {
@@ -313,12 +316,12 @@ Deno.serve(async (request: Request) => {
   const days = Math.min(Math.max(Math.trunc(requestedDays), 1), 30);
   const dryRun = payload.dry_run === true;
 
-  if (!dryRun && (!sendgridKey || !fromEmail)) {
+  if (!dryRun && (!resendKey || !fromEmail)) {
     return json(
       {
         ok: false,
         error:
-          "Email is not configured: set SENDGRID_API_KEY and SENDGRID_FROM as function secrets.",
+          "Email is not configured: set RESEND_API_KEY and RESEND_FROM as function secrets.",
       },
       500
     );
@@ -373,8 +376,8 @@ Deno.serve(async (request: Request) => {
 
     let result: { ok: boolean; error?: string };
     try {
-      result = await sendWithSendGrid(
-        sendgridKey!,
+      result = await sendWithResend(
+        resendKey!,
         { email: fromEmail!, name: fromName },
         recipient,
         subject,

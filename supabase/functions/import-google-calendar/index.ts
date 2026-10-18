@@ -2,6 +2,7 @@ import ICAL from "npm:ical.js@2.2.1";
 import { createClient } from "npm:@supabase/supabase-js@2";
 
 const DEFAULT_ORIGINS = [
+  "https://rhsattendance.org",
   "https://redmond-music-arts-program-mandalora.vercel.app",
   "http://localhost:5173",
 ];
@@ -11,7 +12,8 @@ const allowedOrigins = new Set(
     .map((value) => value.trim())
     .filter(Boolean)
 );
-const PROJECT_HOST = /^redmond(-[a-z0-9-]+)?-music-arts-program-mandalora\.vercel\.app$/i;
+const PROJECT_HOST =
+  /^(?:rhsattendance\.org|redmond(-[a-z0-9-]+)?-music-arts-program-mandalora\.vercel\.app)$/i;
 const GOOGLE_ICS_HOSTS = new Set(["calendar.google.com", "calendar.googleusercontent.com"]);
 const MAX_FEED_BYTES = 1_500_000;
 const MAX_EVENTS = 4000;

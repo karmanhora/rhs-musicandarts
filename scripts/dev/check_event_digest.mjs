@@ -7,14 +7,14 @@
 // Why it exists: this repo has no Deno runtime and no Supabase CLI, so the
 // sender cannot be exercised the way it is deployed. This harness imports the
 // function *unmodified*, shims `Deno.env` / `Deno.serve`, and stubs `fetch` at
-// the network boundary — PostgREST for the two RPCs, api.sendgrid.com for the
+// the network boundary — PostgREST for the two RPCs, api.resend.com for the
 // mail — then drives the handler with real `Request`s. That covers the parts a
 // SQL suite cannot: the shared secret, the JSON contract with
-// `due_event_digests()`, the rendered subject/HTML/text, the SendGrid payload,
+// `due_event_digests()`, the rendered subject/HTML/text, the Resend payload,
 // the one-email-per-person grouping, and that a failed send is not logged.
 //
 // It proves the function's logic, not the deployment: nothing here reaches a
-// real database or a real SendGrid account. Read-only, safe to run any time.
+// real database or a real Resend account. Read-only, safe to run any time.
 // ============================================================================
 import { registerHooks } from "node:module";
 
@@ -47,8 +47,9 @@ function check(label, condition, detail) {
 const ENV = {
   SUPABASE_URL: "https://digest-test.supabase.co",
   SUPABASE_SERVICE_ROLE_KEY: "service-role-key",
-  SENDGRID_API_KEY: "sendgrid-key",
-  SENDGRID_FROM: "no-reply@rhsmusic.test",
+  RESEND_API_KEY: "resend-key",
+  RESEND_FROM: "noreply@rhsattendance.org",
+  DIGEST_FROM_NAME: "RHS Music & Arts",
   PUBLIC_APP_URL: "https://app.example.test",
   EVENT_DIGEST_SECRET: "digest-secret",
 };
@@ -67,8 +68,12 @@ globalThis.Deno = {
 /** What the stubbed network is told to answer with, per scenario. */
 const scenario = {
   due: [],
-  sendgridStatus: 202,
-  sendgridError: { errors: [{ message: "The from address does not match a verified Sender Identity" }] },
+  resendStatus: 200,
+  resendError: {
+    statusCode: 403,
+    name: "validation_error",
+    message: "The rhsattendance.org domain is not verified. Please verify the domain before sending emails.",
+  },
 };
 
 const traffic = { due: [], recorded: null, mails: [] };
@@ -84,15 +89,15 @@ globalThis.fetch = async (input, init = {}) => {
     traffic.recorded = JSON.parse(init.body ?? "{}");
     return Response.json(Array.isArray(traffic.recorded.p_rows) ? traffic.recorded.p_rows.length : 0);
   }
-  if (url.includes("api.sendgrid.com")) {
+  if (url.includes("api.resend.com")) {
     traffic.mails.push({
       authorization: new Headers(init.headers).get("Authorization"),
       body: JSON.parse(init.body ?? "{}"),
     });
-    if (scenario.sendgridStatus >= 300) {
-      return Response.json(scenario.sendgridError, { status: scenario.sendgridStatus });
+    if (scenario.resendStatus >= 300) {
+      return Response.json(scenario.resendError, { status: scenario.resendStatus });
     }
-    return new Response(null, { status: 202 });
+    return Response.json({ id: "email-id" }, { status: 200 });
   }
   throw new Error(`unexpected fetch to ${url}`);
 };
@@ -144,7 +149,7 @@ const reset = () => {
   traffic.recorded = null;
   traffic.mails = [];
   scenario.due = [];
-  scenario.sendgridStatus = 202;
+  scenario.resendStatus = 200;
 };
 
 // ---------------------------------------------------------------------------
@@ -241,15 +246,15 @@ check("…exactly one mail per person", traffic.mails.length === 2, `got ${traff
 
 const mail = traffic.mails[0];
 check(
-  "…authenticated with the SendGrid key",
-  mail.authorization === "Bearer sendgrid-key",
+  "…authenticated with the Resend key",
+  mail.authorization === "Bearer resend-key",
   mail.authorization
 );
 check(
-  "…addressed to the member from the verified sender",
-  mail.body.personalizations?.[0]?.to?.[0]?.email === "student@example.test" &&
-    mail.body.from?.email === "no-reply@rhsmusic.test",
-  JSON.stringify({ to: mail.body.personalizations, from: mail.body.from })
+  "…addressed to the member from the verified domain",
+  mail.body.to?.[0] === "student@example.test" &&
+    mail.body.from === "RHS Music & Arts <noreply@rhsattendance.org>",
+  JSON.stringify({ to: mail.body.to, from: mail.body.from })
 );
 check(
   "…with a subject naming the program and the count",
@@ -257,8 +262,8 @@ check(
   mail.body.subject
 );
 
-const html = mail.body.content.find((part) => part.type === "text/html")?.value ?? "";
-const text = mail.body.content.find((part) => part.type === "text/plain")?.value ?? "";
+const html = mail.body.html ?? "";
+const text = mail.body.text ?? "";
 check(
   "…carrying a local time, not UTC",
   html.includes("Wed, Oct 14") && html.includes("6:30 PM"),
@@ -277,9 +282,9 @@ check(
   text
 );
 check(
-  "…tracking off, because a digest is not a campaign",
-  mail.body.tracking_settings?.open_tracking?.enable === false &&
-    mail.body.tracking_settings?.click_tracking?.enable === false
+  "…tagged as a digest, not a campaign",
+  mail.body.tags?.[0]?.name === "category" && mail.body.tags?.[0]?.value === "event-digest",
+  JSON.stringify(mail.body.tags)
 );
 
 check(
@@ -307,7 +312,7 @@ check("…and reported back", sentBody.recorded === 2, JSON.stringify(sentBody))
 console.log("4. a failed send");
 reset();
 scenario.due = [dueRow()];
-scenario.sendgridStatus = 400;
+scenario.resendStatus = 403;
 
 const failed = await call({ days: 7 }, { "x-event-digest-secret": "digest-secret" });
 const failedBody = await failed.json();
@@ -318,8 +323,8 @@ check(
 );
 check("…and does not record it, so the next run retries", traffic.recorded === null);
 check(
-  "…quoting SendGrid's reason",
-  String(failedBody.failures?.[0]?.error).includes("verified Sender Identity"),
+  "…quoting Resend's reason",
+  String(failedBody.failures?.[0]?.error).includes("domain is not verified"),
   JSON.stringify(failedBody.failures)
 );
 
@@ -329,13 +334,13 @@ check(
 console.log("5. configuration and escaping");
 reset();
 scenario.due = [dueRow()];
-const savedKey = ENV.SENDGRID_API_KEY;
-delete ENV.SENDGRID_API_KEY;
+const savedKey = ENV.RESEND_API_KEY;
+delete ENV.RESEND_API_KEY;
 const unconfigured = await call({ days: 7 }, { "x-event-digest-secret": "digest-secret" });
 const unconfiguredBody = await unconfigured.json();
 check(
-  "a missing SendGrid key is a plain error, not a crash",
-  unconfigured.status === 500 && String(unconfiguredBody.error).includes("SENDGRID_API_KEY"),
+  "a missing Resend key is a plain error, not a crash",
+  unconfigured.status === 500 && String(unconfiguredBody.error).includes("RESEND_API_KEY"),
   JSON.stringify(unconfiguredBody)
 );
 const dryWithoutKey = await call(
@@ -343,7 +348,7 @@ const dryWithoutKey = await call(
   { "x-event-digest-secret": "digest-secret" }
 );
 check("…while a dry run still works without one", dryWithoutKey.status === 200);
-ENV.SENDGRID_API_KEY = savedKey;
+ENV.RESEND_API_KEY = savedKey;
 
 reset();
 scenario.due = [
@@ -353,7 +358,7 @@ scenario.due = [
 ];
 const escaped = await call({ days: 7 }, { "x-event-digest-secret": "digest-secret" });
 await escaped.json();
-const escapedHtml = traffic.mails[0].body.content.find((p) => p.type === "text/html").value;
+const escapedHtml = traffic.mails[0].body.html;
 check(
   "an event name cannot inject markup into the email",
   !escapedHtml.includes("<img src=x") &&

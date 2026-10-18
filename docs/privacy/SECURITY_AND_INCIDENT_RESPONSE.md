@@ -23,8 +23,8 @@
 - [ ] Supabase Auth password policy / minimum length, and MFA for staff.
 - [ ] Redirect URLs restricted to the app origins (configured in
       [`config.toml`](../../supabase/config.toml) — confirm in the dashboard).
-- [ ] Custom SMTP configured (built-in sender is rate-limited and not for
-      production).
+- [ ] Custom SMTP configured: Resend's relay from `rhsattendance.org`, with the
+      domain verified (SPF/DKIM) and a separate API key for the digest.
 - [ ] Vercel/Supabase/GitHub/SMTP accounts all have MFA and least-privilege.
 - [ ] Supabase project region chosen and documented.
 

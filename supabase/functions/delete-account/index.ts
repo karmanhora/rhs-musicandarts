@@ -8,6 +8,7 @@ import { createClient } from "npm:@supabase/supabase-js@2";
  * e.g. a preview deployment URL.
  */
 const DEFAULT_ORIGINS = [
+  "https://rhsattendance.org",
   "https://redmond-music-arts-program-mandalora.vercel.app",
   "http://localhost:5173",
 ];
@@ -19,10 +20,11 @@ const allowedOrigins = new Set(
     .filter(Boolean)
 );
 
-// This app's Vercel production and preview hosts (production has no middle
-// token, a preview adds one). Keeps the project's own deployments working
-// without re-allowing arbitrary Vercel apps.
-const PROJECT_HOST = /^redmond(-[a-z0-9-]+)?-music-arts-program-mandalora\.vercel\.app$/i;
+// This app's custom domain, plus its Vercel production and preview hosts
+// (production has no middle token, a preview adds one). Keeps the project's own
+// deployments working without re-allowing arbitrary Vercel apps.
+const PROJECT_HOST =
+  /^(?:rhsattendance\.org|redmond(-[a-z0-9-]+)?-music-arts-program-mandalora\.vercel\.app)$/i;
 
 function isAllowedOrigin(origin: string): boolean {
   if (allowedOrigins.has(origin)) return true;

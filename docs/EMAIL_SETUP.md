@@ -6,10 +6,11 @@ email change, reauthentication, and enabled security notifications. Their
 wording and layout live in `supabase/templates/`, wired up by
 `supabase/config.toml`.
 
-Supabase Auth handles email delivery; the app's server-side Edge Function only
-requests student invitations and never exposes its service-role key to the
-browser. There is no third-party email transport to integrate, and changing a
-subject line or template does not require a frontend redeploy.
+Supabase Auth triggers every account email and hands delivery to **Resend's
+SMTP relay** (§3). The app also sends one email of its own — the upcoming-events
+digest — through Resend's **API** (§6a). The server-side Edge Function that
+requests student invitations never exposes its service-role key to the browser,
+and changing a subject line or template does not require a frontend redeploy.
 
 The program-staff invite flow is backed by migration
 `supabase/migrations/027_program_email_invites.sql` and the
@@ -38,20 +39,13 @@ variables in the table above are used; they are documented Supabase variables.
 
 ## 2. Applying them
 
-Templates are not deployed by the frontend build — they are configuration. Two
-honest routes, and either works:
-
-**CLI (preferred, because it is version-controlled).**
-
-```bash
-supabase link --project-ref <PROJECT_REF>
-supabase config push --project-ref <PROJECT_REF>
-```
-
-`config push` **replaces** the project's auth configuration with
-`supabase/config.toml`. If a `config.toml` already exists for this project
-elsewhere, merge the `[auth]` sections into it first — do not overwrite it, or
-settings that only exist in the dashboard copy are reset.
+Templates are not deployed by the frontend build — they are configuration.
+**Do not run `supabase config push` on this project.** `supabase config diff` on
+2026-10-18 found 19 settings that exist only remotely — Google sign-in, TOTP
+MFA, the security-notification toggles and a 1000/hour email rate limit among
+them. A push replaces the remote auth configuration with this file's defaults,
+which would turn Google sign-in off and drop the email limit to 2/hour.
+`supabase/config.toml` is a record of intent, not a push source.
 
 **Dashboard.** Authentication → Emails → Templates: paste the subject from
 `supabase/config.toml` and the contents of the matching file. For the password
@@ -59,33 +53,54 @@ change notification, enable **Password changed** in the project's Auth
 notification settings, then set its subject and paste
 `supabase/templates/password_changed_notification.html` in the notification
 template editor. Notification enablement is project-level; saving the template
-alone does not turn it on. This dashboard setup drifts from the repository the
-next time somebody edits a template here — which is the argument for the CLI
-route.
+alone does not turn it on. The same settings can be applied with the Management
+API (`PATCH /v1/projects/<ref>/config/auth`), which changes only the fields sent —
+that is how SMTP and the redirect URLs were set on 2026-10-18. Keep this file in
+step by hand afterwards.
 
 If preview and production are separate Supabase projects, apply this to **both**.
 They are separate environments; an email template is not inherited.
 
-## 3. SMTP, and the one thing that will bite you
+## 3. SMTP: Resend, from rhsattendance.org
 
-This project sends through **Brevo's SMTP relay**, not Supabase's built-in
-sender: host `smtp-relay.brevo.com`, port `587`, user the **SMTP login** Brevo
-shows on its SMTP page (often `<id>@smtp-brevo.com`, not the account email), and
-an **SMTP key** as the password — not an API key. All of it lives in
-**Authentication → Emails → SMTP Settings**, which is dashboard state only: the
-`[auth.email.smtp]` block in `supabase/config.toml` is still commented out, so a
-`supabase config push` would silently replace it. Know that before running one.
+Auth mail goes through **Resend's SMTP relay**, from the domain
+`rhsattendance.org` verified in Resend's dashboard. It is not Supabase's
+built-in sender, and not Brevo or SendGrid. The settings:
 
-The **From** address has to be one Brevo has verified under *Senders* — anything
-else is refused at the relay, whatever the templates say.
+| Setting | Value |
+| --- | --- |
+| Host | `smtp.resend.com` |
+| Port | `587` (STARTTLS; `465` implicit TLS and `2465`/`2587` also work) |
+| Username | `resend` — that literal string, not an address |
+| Password | a Resend **API key** (Resend has one credential type) |
+| Sender email | `noreply@rhsattendance.org` |
+| Sender name | `RHS Music & Arts` |
 
-What a student sees when any part of that transport fails is the same sentence
-on the phone: **Create account** answers `Error sending confirmation email`, and
-**Forgot your password?** fails the same way, because both go through the same
-relay. The app maps it to plain language in `src/hooks/useAuth.tsx` (before that
-it was shown verbatim, which reads like the student's mistake), but the sentence
-cannot tell you *why*. The auth log can, and it always carries the transport's
-own answer under `error`. Two real examples from this project:
+`supabase/config.toml` carries the same block with
+`pass = "env(RESEND_API_KEY)"`, so the key never enters git. `supabase config
+push` resolves that from the environment (the CLI also reads the project-root
+`.env`); if `RESEND_API_KEY` is not set, configure SMTP in the dashboard rather
+than pushing a blank password.
+
+Resend refuses any From address whose domain is not verified in its dashboard,
+so verify `rhsattendance.org` there and add the DNS records it asks for (SPF,
+DKIM, and the MX/return-path record). Those records are not what makes sending
+work — they are what keeps the mail out of spam, which is the difference between
+a confirmation a student finds and one they do not. Resend's free tier is 3,000
+messages a month / 100 a day — enough for sign-ups, but the digest shares that
+quota (§6a). Supabase still applies its own auth-email rate limit
+(`GOTRUE_RATE_LIMIT_EMAIL_SENT`, 30 an hour by default), so a whole class
+signing up at once can still wait.
+
+### Reading a failure
+
+What a student sees when the transport fails is the same sentence on the phone:
+**Create account** answers `Error sending confirmation email`, and **Forgot your
+password?** fails the same way, because both go through the same transport. The
+app maps it to plain language in `src/hooks/useAuth.tsx` (before that it was
+shown verbatim, which reads like the student's mistake), but the sentence cannot
+tell you *why*. The auth log can, and it carries the transport's own answer
+under `error`. History from this project, still useful for reading the codes:
 
 ```
 # 2026-10-16 — SendGrid account out of credits (trial ended, no free plan since May 2025)
@@ -94,23 +109,21 @@ error: 451 "Authentication failed: Maximum credits exceeded"
 
 # 2026-10-17 — the same request after moving the relay to Brevo
 path: /recover   status: 200   (no `error` field at all)
+
+# 2026-10-17 19:32Z — custom SMTP off, built-in sender, accepted
+mail_from: noreply@mail.app.supabase.io   mail_to: <owner address>   mail_type: recovery
 ```
 
-So read the log before touching anything. `451` with "Maximum credits exceeded"
-is the provider refusing on billing, not a bad password; `535` is credentials; a
-`550` naming the sender is an unverified From address. None of those is a code
-bug, and all three are one identical sentence on the student's phone.
+`451` is a provider refusing on billing; `535` is credentials (with Resend, a
+revoked or wrong API key); a `550` naming the sender means the From address is
+not on the verified domain. None of those is a code bug, and all of them are one
+identical sentence on the student's phone. Resend's dashboard → Emails shows
+each send and the exact rejection, which is often quicker than the auth log.
 
-The SendGrid entries above are history, not a fallback: its trial expired and
-Supabase Auth does **not** fall back to its own sender when a custom relay
-refuses — it fails the request. Going back means paying for a plan that sends
-far more mail than this app ever will.
-
-**If SMTP is ever cleared**, Supabase's built-in sender takes over and it is not
-a spare tyre: since September 2024 it **only delivers to addresses that belong to
-the project's own Supabase organization** — the Supabase team, not the school
-domain ([changelog](https://github.com/orgs/supabase/discussions/29370)). Every
-student address would then be refused, no matter how quiet the hour is.
+The built-in sender and the Brevo/SendGrid relays above are history, not
+fallbacks: GoTrue does not retry or reroute. Whichever transport is configured
+either accepts the message or the request fails, which is why this repository
+declares the transport it means to keep.
 
 **The one route that needs no email:** *Continue with Google*. The school
 addresses are Google Workspace accounts, the Google provider is enabled, and
@@ -121,33 +134,26 @@ actually leaves.
 
 That matters more here than in most apps, because **a new account cannot sign in
 until it confirms its address**. Even with a working transport, a class signing
-up together can exhaust a per-hour rate limit, and the confirmations will not
-arrive.
+up together can hit the per-hour limit, and the confirmations will not arrive.
 
-To configure a transport — the first time, or to replace one — use
-Authentication → Emails → SMTP Settings (or the commented `[auth.email.smtp]`
-block in `supabase/config.toml`): host, port, user, password and the from-address
-the provider has verified. Then authenticate the domain with the provider and
-verify the DNS records it asks for — without them, mail is sent but lands in
-spam. A verified *single address* (Brevo *Senders*, SendGrid *Single Sender
-Verification*) is enough to start; only a domain lifts the spam-folder risk.
-
-If an invitation fails with “Error sending invite email,” check that the exact
-From address configured in Supabase Auth is verified at the provider before
-retrying — that message is the `invite-student` function, which sends through
-its own transport (`SENDGRID_API_KEY`, see §6a), not through the auth relay.
+If an invitation fails with "Error sending invite email," it is the
+`invite-student` function's call to `auth.admin.inviteUserByEmail` — that goes
+through this same auth transport, not the digest's API key. Check that
+`noreply@rhsattendance.org` is on the verified domain and read the auth log
+before retrying.
 
 **No application code changes when SMTP is configured.** The templates, the
 subjects, the redirect URLs and every call in `src/hooks/useAuth.tsx` stay
 exactly as they are; only the transport changes. A failed send is a transport
 problem until the auth log says otherwise — start there, not in `src/`.
 
-**Two transports, not one.** Auth mail goes through Brevo's relay (this
-section); the event digest and the invite function call SendGrid's **API** with
-`SENDGRID_API_KEY` (§6a). They are unrelated: changing the relay does not touch
-them, and a SendGrid outage does not stop sign-ups. Any provider works for the
-relay — what matters is that the from-address is verified there, or the mail is
-filtered.
+**Two transports, one provider.** Auth mail uses Resend's SMTP relay (this
+section). The upcoming-events digest calls Resend's **API** with its own key and
+sender (§6a). They are independent calls: a digest failure does not stop
+sign-ups, and the digest does not go through SMTP. Use a **separate Resend API
+key** for the digest so either can be revoked without breaking the other — the
+`RESEND_API_KEY` in `supabase/config.toml` is the auth relay's, while the
+function secret of the same name belongs to the digest.
 
 ## 4. Redirect URLs
 
@@ -167,11 +173,13 @@ migration that depends on it.
 - **Locally:** `supabase start` runs a mail catcher alongside the local stack.
   Open the local mailbox (port 54324) and you can read every message the local
   project sends without touching a real inbox.
-- **In production:** sign up with an address you control, open the confirmation,
-  then run the password-reset flow end to end. Check it **arrives in the inbox**
-  — not just in spam — because that is what a student will experience. Also check
-  the link opens `/reset-password`, not the home page (§4), and verify that a
-  successful password change sends the password-changed notification.
+- **In production:** use a real address you control, and make it a school
+  address — that is what a student will experience, and Resend will deliver to
+  it. Sign up, open the confirmation, then run the password-reset flow end to
+  end. Check it **arrives in the inbox** — not just in spam — and that Resend's
+  dashboard → Emails lists the send. Also check the link opens
+  `/reset-password`, not the home page (§4), and verify that a successful
+  password change sends the password-changed notification.
 - A confirmation that arrives but whose link does nothing is almost always a
   redirect-URL problem, not a template one. A missing subject line means the
   template was saved without its subject.
@@ -187,9 +195,9 @@ minutes, so it belongs in the bell, not in a mailbox.
 
 This app now sends one email of its own (migration 032 + the `event-digest` edge
 function): at most one a day per person, listing the next week's events across
-every program they belong to. It goes through SendGrid's **API**, with its own
-key and sender — that is a *different* transport from the auth relay in §3, so
-the day it is switched on it is a second vendor, not a free rider on Brevo.
+every program they belong to. It goes through Resend's **API**
+(`api.resend.com/emails`), with its own key and sender — a *different*
+transport from the auth relay in §3, even though both are Resend.
 
 - **Who is owed one** — `public.due_event_digests()` returns the members who are
   active, subscribed, have a confirmed address, are not deactivated, and have at
@@ -214,22 +222,31 @@ the day it is switched on it is a second vendor, not a free rider on Brevo.
   archived program and a program nobody can be reached in all read differently.
 - **Secrets** — `EVENT_DIGEST_SECRET` (the cron job sends it as
   `x-event-digest-secret`; without it set the function refuses to run), plus
-  `SENDGRID_API_KEY` and `SENDGRID_FROM`, and optionally `DIGEST_FROM_NAME` and
-  `PUBLIC_APP_URL`. These are SendGrid **API** credentials for
-  `api.sendgrid.com`, *not* the SMTP host/user/password above — those live in
-  Dashboard → Auth → SMTP. Nothing has set them yet: `supabase secrets list`
-  showed only the platform's own variables on 2026-10-11 and again on
-  2026-10-17, so this is the first thing to create before the digest can send
-  anything.
+  `RESEND_API_KEY` and `RESEND_FROM`, and optionally `DIGEST_FROM_NAME` and
+  `PUBLIC_APP_URL`. These are Resend **API** credentials for
+  `api.resend.com`, *not* the SMTP username, key and sender above — and they
+  should be a **different API key**, so the digest can be revoked without
+  stopping sign-ups. All five are set on the live project as of **2026-10-18**
+  (a sending-only `event-digest` key), and the Resend sender code is deployed.
+  The local source for them is `.env.event-digest` (gitignored);
+  `supabase secrets set --env-file .env.event-digest` re-applies the same values.
 - **The schedule** — a Supabase Cron job, like the calendar sync. The exact
   statement is in `scripts/migrate/04_functions_config.md` §2. `pg_cron` and
   `pg_net` **are** enabled on the live project (checked 2026-10-17), but
   `cron.job` is empty — no digest run is scheduled. Create the job only after
   the secrets above exist, or it will fire and 401 against itself.
-- **Current state (2026-10-11)** — migration 032 is applied and the
-  `event-digest` function is deployed (`verify_jwt = false`, authorised by
-  `x-event-digest-secret`). Without that secret set the deployed function
-  answers `401` to every caller, so nothing is mailed to anyone yet.
+- **Quota, and why it can break sign-ups** — the free Resend account sends 100
+  messages a day, and **auth mail and the digest share that quota**. The digest
+  will mail up to `MAX_RECIPIENTS` (500) people in one run, so a roster past 100
+  would spend the day's allowance before a student's confirmation leaves. With
+  more than ~100 reachable members, move Resend to a paid tier before scheduling
+  the digest; until then the weekly run is the thing that gets sent, not the
+  sign-up.
+- **Current state** — migration 032 is applied and the `event-digest`
+  function is deployed with the Resend sender (`verify_jwt = false`, authorised
+  by `x-event-digest-secret`). A dry run on 2026-10-18 returned `ok: true`; no
+  member was due a digest in that window. Nothing can be mailed until the cron
+  job below exists, and that is deliberate until the quota question is settled.
 - **Testing it honestly** — call it with `{"dry_run": true}` and the
   `x-event-digest-secret` header: the JSON names every recipient, subject and
   event and sends nothing. A service-role bearer is not a substitute — the

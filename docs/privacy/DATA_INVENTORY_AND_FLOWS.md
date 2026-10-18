@@ -37,9 +37,9 @@ Supabase Edge / PostgREST  ──►  Supabase Postgres (RLS + SECURITY DEFINER 
    │                                   │
    │  invite email                     └── backups (provider, plan-dependent)
    ▼
-Supabase Auth email (built-in SMTP, or SendGrid/etc. if configured)
-   ▼
-Student/staff inbox
+Supabase Auth ──► Resend (SMTP relay) ──► student/staff inbox
+   │
+   └── event digest ──► Resend (API) ──► student/staff inbox
 
 Staff browser ──► Supabase Edge Function ──► Google Calendar (public ICS URL, read-only)
                          │

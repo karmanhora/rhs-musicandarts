@@ -13,6 +13,8 @@ deployment stay untouched.
 - [ ] `supabase functions deploy send_signup_reminder --project-ref <NEW_PROJECT_REF>`
 - [ ] After applying migration 027, deploy
       `supabase functions deploy invite-student --project-ref <NEW_PROJECT_REF>`.
+- [x] Re-deployed `event-digest` with the Resend sender and the new default
+      app URL on 2026-10-18 (`--use-api --no-verify-jwt`).
 - [x] After applying migration 032, deploy
       `supabase functions deploy event-digest --project-ref <NEW_PROJECT_REF>`.
       Server-to-server only (no CORS): it is called by the cron job in §2, not by
@@ -21,14 +23,15 @@ deployment stay untouched.
       the cron call carries no `Authorization` header, so the platform check has
       to be off and the function authorises the call itself.
 - [ ] Function secrets (`supabase secrets set … --project-ref <NEW_PROJECT_REF>`, values never logged):
-  - [ ] `SENDGRID_API_KEY`
-  - [ ] `SENDGRID_FROM` (verified sender)
-  - [ ] `EVENT_DIGEST_SECRET` (long random value; the digest cron job sends it as
+  - [x] `RESEND_API_KEY` (a sending-only key, separate from the auth relay's)
+        — set 2026-10-18
+  - [x] `RESEND_FROM` = `noreply@rhsattendance.org` (on the verified domain)
+        — set 2026-10-18
+  - [x] `EVENT_DIGEST_SECRET` (long random value; the digest cron job sends it as
         the `x-event-digest-secret` header and the function refuses to run
-        without it)
-  - [ ] `PUBLIC_APP_URL` (only for the reference `send_signup_reminder` function,
-        which builds an image URL from it; this app's own auth emails in
-        `supabase/templates/` contain no images, so nothing else reads it)
+        without it) — set 2026-10-18; also write it into Vault when scheduling
+  - [x] `DIGEST_FROM_NAME` = `RHS Music & Arts` — set 2026-10-18
+  - [x] `PUBLIC_APP_URL` = `https://rhsattendance.org` — set 2026-10-18
   - [ ] `GOOGLE_CALENDAR_ICS_URL` (the RHS Band public ICS feed)
   - [ ] `CALENDAR_SYNC_SECRET` (long random value for scheduled sync calls)
 - [ ] Note: `sync_google_calendar` currently runs with `verify_jwt = false` and
@@ -114,8 +117,11 @@ cutover checklist.
 - [ ] Site URL: the new production URL (Vercel) + `http://localhost:5173` for dev.
 - [ ] Redirect URLs: `<app>/reset-password` (the password-recovery landing — see
       the `redirectTo` in `src/hooks/useAuth.tsx`), plus `<app>/*`.
-- [ ] SMTP: custom SMTP (SendGrid) per `docs/email-setup.md` in the OLD repo
-      (SMTP host/port/user + password go in Dashboard → Auth → SMTP; never in git).
+- [x] SMTP: Resend's relay — host `smtp.resend.com`, port `587`, user
+      `resend`, password a Resend API key, sender
+      `noreply@rhsattendance.org` (the domain verified in Resend). Set live on
+      2026-10-18; `supabase config.toml` now mirrors it. Never commit the key
+      (docs/EMAIL_SETUP.md §3).
 - [ ] Authentication email templates: copy the 6 from `supabase/templates/` (confirmation,
       recovery, invite, magic_link, email_change, reauthentication) into
       Dashboard → Auth → Email Templates (subjects + HTML).

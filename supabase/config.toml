@@ -4,17 +4,14 @@
 # OPTIONAL, and it changes nothing about the deployed app: Vercel builds the
 # frontend from src/, and nothing in it reads this file at runtime.
 #
-# It exists for one reason — so the branded auth emails and security
-# notifications in supabase/templates/ are version-controlled and can be
-# applied with one command instead of being pasted into the dashboard by hand:
-#
-#   supabase link --project-ref <PROJECT_REF>
-#   supabase config push --project-ref <PROJECT_REF>
-#
-# `config push` REPLACES the remote auth configuration with what is here. A
-# project that already keeps a config.toml elsewhere must MERGE these sections
-# into that file rather than overwriting it, or settings that live only in the
-# dashboard copy will be reset.
+# It is a RECORD of the intended auth configuration — templates, redirect
+# URLs, SMTP — not a push source. **Do not run `supabase config push` against
+# this project.** `supabase config diff` on 2026-10-18 showed 19 settings that
+# exist only remotely (Google sign-in, TOTP MFA, the security-notification
+# toggles, a 1000/hour email rate limit, and more). A push would replace all of
+# them with this file's defaults — Google sign-in off, email limit down to
+# 2/hour. Apply changes in the dashboard or through the Management API, then
+# keep this file in step by hand.
 #
 # Operator guide (which email fires when, SMTP, redirect URLs, how to test):
 # docs/EMAIL_SETUP.md. Dashboard equivalent of this file:
@@ -24,7 +21,7 @@
 [auth]
 # The production origin. Everything that does not name its own redirect falls
 # back to this, so it must be the deployed app — not localhost.
-site_url = "https://redmond-music-arts-program-mandalora.vercel.app/"
+site_url = "https://rhsattendance.org/"
 
 # Every destination an email link is allowed to land on. A link whose redirect
 # is missing here is silently rewritten to the Site URL, which is how a
@@ -32,13 +29,18 @@ site_url = "https://redmond-music-arts-program-mandalora.vercel.app/"
 additional_redirect_urls = [
   # Confirmation and invite links: src/hooks/useAuth.tsx passes
   # `${window.location.origin}/` as emailRedirectTo.
+  "https://rhsattendance.org/",
+  "https://rhsattendance.org/**",
+  # The password-recovery link: resetPasswordForEmail passes
+  # `${window.location.origin}/reset-password`, and the app refuses to apply a
+  # recovery without that screen (AuthScreen mode="reset").
+  "https://rhsattendance.org/reset-password",
+  # The Vercel deployment still answers on its own hostname; keep its links
+  # working, including previews, while the custom domain settles in.
   "https://redmond-music-arts-program-mandalora.vercel.app/",
   "https://redmond-music-arts-program-mandalora.vercel.app/**",
   "https://redmond-*-music-arts-program-mandalora.vercel.app",
   "https://redmond-*-music-arts-program-mandalora.vercel.app/**",
-  # The password-recovery link: resetPasswordForEmail passes
-  # `${window.location.origin}/reset-password`, and the app refuses to apply a
-  # recovery without that screen (AuthScreen mode="reset").
   "https://redmond-music-arts-program-mandalora.vercel.app/reset-password",
   # Local development — both call sites above, on the Vite dev server.
   "http://localhost:5173/**",
@@ -106,28 +108,29 @@ subject = "Your password was changed"
 content_path = "./templates/password_changed_notification.html"
 
 # ----------------------------------------------------------------------------
-# Custom SMTP — commented out, because the live transport is configured in the
-# dashboard and this block would REPLACE it.
+# Auth email transport.
 #
-# As of 2026-10-17 the project sends through Brevo's relay
-# (smtp-relay.brevo.com:587, SMTP login + SMTP key), set only in
-# Authentication → Emails → SMTP Settings. Auth email still works if this file
-# is left alone; `supabase config push` with the block below uncommented would
-# point production at smtp.example.com and break it.
+# Auth mail goes through Resend's SMTP relay from the domain rhsattendance.org
+# (verified in Resend). The password is the Resend API key and is never written
+# here. The live project was set through the Management API on 2026-10-18;
+# apply future changes the same way or in Authentication → Emails → SMTP
+# Settings. Never push this file wholesale (see the warning at the top of the
+# file, and docs/EMAIL_SETUP.md §3).
 #
-# Supabase's built-in sender is NOT a fallback: it only delivers to addresses
-# inside the project's Supabase organization, so every student address is
-# refused (docs/EMAIL_SETUP.md §3).
-#
-# To version-control the transport instead, uncomment and read the password from
-# the environment — never commit a key.
-#
-# [auth.email.smtp]
-# enabled = true
-# host = "smtp.example.com"
-# port = 587
-# user = "apikey"
-# pass = "env(SMTP_PASSWORD)"
-# admin_email = "no-reply@example.com"
-# sender_name = "RHS Music & Arts"
+# The event-digest function uses a Resend API key too, but as an API credential
+# for api.resend.com, not as SMTP. Give it its own key so either can be revoked
+# without breaking the other — see docs/EMAIL_SETUP.md §6a.
 # ----------------------------------------------------------------------------
+
+[auth.email.smtp]
+enabled = true
+host = "smtp.resend.com"
+# 587 uses STARTTLS and is what the live project runs; 465 (implicit TLS) works
+# too — Resend's own Supabase guide uses it.
+port = 587
+# Resend's SMTP username is the literal string "resend", not an address.
+user = "resend"
+pass = "env(RESEND_API_KEY)"
+# Must be on the domain verified in Resend or the relay refuses the message.
+admin_email = "noreply@rhsattendance.org"
+sender_name = "RHS Music & Arts"

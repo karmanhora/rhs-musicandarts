@@ -159,7 +159,8 @@ can render. The flow:
 Supabase also sends the account emails — confirmation, password reset, magic
 link, email change, reauthentication — from the templates in
 `supabase/templates/`. Nothing in the app code depends on them, so they are
-applied through the dashboard or `supabase config push`; the operator guide
+applied through the dashboard (not `supabase config push`, which would reset
+remote-only settings — see [`EMAIL_SETUP.md`](EMAIL_SETUP.md) §2); the operator guide
 (which email fires when, the SMTP ceiling, redirect URLs, how to test) is
 [`EMAIL_SETUP.md`](EMAIL_SETUP.md).
 
@@ -435,9 +436,9 @@ node scripts/dev/check_event_digest.mjs
 
 [`scripts/dev/check_event_digest.mjs`](../scripts/dev/check_event_digest.mjs)
 imports the real `event-digest` edge function unmodified, shims `Deno.env` and
-`Deno.serve`, and stubs `fetch` at the network boundary — PostgREST for the two
-RPCs, `api.sendgrid.com` for the mail. So the shared secret, the JSON contract
-with `due_event_digests()`, the rendered subject and body, the SendGrid payload,
+`Deno.serve`, and stubs `fetch` atthe network boundary — PostgREST for the two RPCs, `api.resend.com` for the
+mail. So the shared secret, the JSON contract
+with `due_event_digests()`, the rendered subject and body, the Resend payload,
 and the rule that a failed send is not logged as sent are all checked without
 Deno, without a database, and without sending mail. It is the closest this
 repository gets to running a function in a terminal that has no Supabase CLI,
@@ -550,16 +551,15 @@ Rules the code follows, and that changes should keep:
   `fetchMyMemberships` now selects `memberships.email_upcoming_events`, so a
   deploy ahead of the migration fails that query for every signed-in person.
   Migration first, then the app — the same order 029 and 030 needed.
-- **Upcoming-event emails are applied and deployed, still not switched on**
-  (migration 032 + the `event-digest` function). Both halves are on the live
-  project as of **2026-10-11**: the migration is applied and the function is
-  deployed with `verify_jwt = false`. What remains is configuration, not code —
-  the `SENDGRID_API_KEY`, `SENDGRID_FROM` and `EVENT_DIGEST_SECRET` secrets, then
-  `pg_cron` (+ `pg_net`) and the schedule itself.
-  `scripts/migrate/04_functions_config.md` §1–2 has all of it, and
+- **Upcoming-event emails are deployed and configured, but not scheduled**
+  (migration 032 + the `event-digest` function). The function is deployed with
+  `verify_jwt = false`, and `RESEND_API_KEY`, `RESEND_FROM`,
+  `DIGEST_FROM_NAME`, `PUBLIC_APP_URL` and `EVENT_DIGEST_SECRET` were set on
+  **2026-10-18**. A dry run the same day returned `ok: true` with no recipients
+  due. What remains is the `pg_cron` job in
+  `scripts/migrate/04_functions_config.md` §2 — it is deliberately unscheduled
+  until the shared Resend quota is settled, because one run can mail up to 500
+  people and the free tier allows 100 a day (auth mail included).
   `docs/EMAIL_SETUP.md` §6a explains what the digest does and who it skips.
-  Until then nothing is emailed to anyone, and the deployed function refuses
-  every caller: with no `EVENT_DIGEST_SECRET` set it answers `401` (verified
-  against the deployed function, 2026-10-11).
 - `docs/CUTOVER.md` and `scripts/migrate/run_all.sh` (Phase 4).
 - The new Vercel project for this frontend.

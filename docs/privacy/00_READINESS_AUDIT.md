@@ -291,7 +291,7 @@ retention expectations. **[district]**
 
 **Recommended best practice (not a legal mandate):**
 - CORS allowlist, stricter excuse-reason input, backup/DR routine, MFA on the
-  Supabase/Vercel/GitHub/SendGrid accounts, least-privilege service keys,
+  Supabase/Vercel/GitHub/Resend accounts, least-privilege service keys,
   dependency review.
 
 **Must be confirmed by district counsel:** whether the developer can be a
@@ -417,7 +417,8 @@ live (see §6.1).
 **Unverified / provider-dependent**
 - [ ] Supabase & Vercel encryption, backups, subprocessors, region (provider docs;
       not independently audited).
-- [ ] SMTP provider and deliverability (Supabase built-in sender by default).
+- [ ] SMTP provider and deliverability (Resend; confirm DNS/SPF/DKIM and the
+      DMARC posture for `rhsattendance.org`).
 - [ ] Whether any data leaves the chosen region.
 
 **District-dependent (blocking real data)**
