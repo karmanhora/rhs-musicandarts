@@ -1,4 +1,5 @@
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
+import { Analytics } from "@vercel/analytics/react";
 import { Splash } from "./components/Splash";
 import { ToastProvider } from "./components/ui";
 import { AuthProvider, useAuth } from "./hooks/useAuth";
@@ -23,6 +24,7 @@ export default function App() {
       <AuthProvider>
         <SessionRoutes />
       </AuthProvider>
+      <Analytics />
     </ToastProvider>
   );
 }
