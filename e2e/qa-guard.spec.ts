@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
-import { installMocks } from "./support/mocks.mjs";
+import { installMocks, SUPABASE_HOST } from "./support/mocks.mjs";
 import {
   ANIMATION_PROBE,
   CALM_CONTRAST_PROBE,
@@ -35,6 +35,50 @@ type Overflow = {
 
 async function measureOverflow(page: Page): Promise<Overflow> {
   return (await page.evaluate(OVERFLOW_PROBE)) as Overflow;
+}
+
+/**
+ * One event dated today, because the calendar agenda opens on today and the
+ * shared fixtures are dated relative to the mocks' fixed "now". The extra
+ * columns beyond the ones the check-in screen reads are what the event-detail
+ * sheet renders.
+ */
+async function serveTodaysEvent(page: Page): Promise<void> {
+  const today = new Date();
+  today.setHours(15, 30, 0, 0);
+  await page.route(/\/rest\/v1\/events(\?.*)?$/, (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      headers: { "access-control-allow-origin": "*", "content-range": "0-0/1" },
+      body: JSON.stringify([
+        {
+          id: "88888888-8888-4888-8888-888888888888",
+          ensemble_id: "33333333-3333-4333-8333-333333333333",
+          name: "Marching rehearsal — homecoming set",
+          type: "rehearsal",
+          event_type: "rehearsal",
+          date: today.toISOString(),
+          end_date: new Date(today.getTime() + 2 * 60 * 60 * 1000).toISOString(),
+          all_day: false,
+          location: "RHS Band Room",
+          description: "",
+          google_calendar_uid: null,
+          google_calendar_updated_at: null,
+          google_calendar_synced_at: null,
+          checkin_mode: "qr",
+          attendance_requirement: "required",
+          event_source: "manual",
+          archived: false,
+          late_minutes: 10,
+          reminder_enabled: false,
+          reminder_minutes_before: 60,
+          created_by: null,
+          created_at: "2026-09-01T00:00:00.000Z",
+        },
+      ]),
+    })
+  );
 }
 
 /* ------------------------------------------------------------------ tests -- */
@@ -486,4 +530,119 @@ test.describe("reduced motion", () => {
     const after = (await page.evaluate(ANIMATION_PROBE)) as unknown[];
     expect(after, JSON.stringify(after, null, 2)).toEqual([]);
   });
+});
+
+test.describe("live check-in projector", () => {
+  // A cold Vite dev server compiles the route chunks on first request; the
+  // signed-in screens pay the same cost and allow for it.
+  test.setTimeout(300_000);
+
+  /**
+   * The eight-character code is one unbreakable token in a card that is only
+   * ~320px wide once the live columns appear, so a larger font size silently
+   * spills it under the neighbouring column (the code used to be 3.75rem and
+   * lost its last character). This renders the session panel — the shared
+   * fixtures do not — and measures the real text box, not just the document.
+   */
+  test("the code stays inside its card at every width", async ({ page }) => {
+    const code = "A5TSTYZ2";
+    await installMocks(page, true);
+
+    await serveTodaysEvent(page);
+    await page.route(`${SUPABASE_HOST}/rest/v1/rpc/start_checkin_session`, (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        headers: { "access-control-allow-origin": "*" },
+        body: JSON.stringify({
+          ok: true,
+          token: "qa-session-token",
+          entry_code: code,
+          expires_at: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
+        }),
+      })
+    );
+
+    await page.goto("/checkin");
+    const start = page.getByRole("button", { name: "Start check-in" });
+    await expect(start).toBeVisible({ timeout: 60_000 });
+    await start.click();
+    await expect(page.getByText(code, { exact: true })).toBeVisible();
+
+    for (const width of [320, 390, 768, 1024, 1440]) {
+      await page.setViewportSize({ width, height: 900 });
+      await page.waitForTimeout(150);
+      const fit = (await page.evaluate((value) => {
+        const element = [...document.querySelectorAll("p")].find(
+          (p) => p.textContent?.trim() === value
+        );
+        const card = element?.closest(".cue-card");
+        if (!element || !card) return null;
+        const style = getComputedStyle(card);
+        const range = document.createRange();
+        range.selectNodeContents(element);
+        const text = range.getBoundingClientRect();
+        const box = card.getBoundingClientRect();
+        return {
+          left: Math.round(box.left + parseFloat(style.paddingLeft) - text.left),
+          right: Math.round(text.right - (box.right - parseFloat(style.paddingRight))),
+          overflow: element.scrollWidth - element.clientWidth,
+        };
+      }, code)) as { left: number; right: number; overflow: number } | null;
+
+      expect(fit, `no code rendered at ${width}px`).not.toBeNull();
+      expect(fit!.left, `code spills left at ${width}px`).toBeLessThanOrEqual(0);
+      expect(fit!.right, `code spills right at ${width}px`).toBeLessThanOrEqual(0);
+      expect(fit!.overflow, `code line box overflows at ${width}px`).toBe(0);
+    }
+  });
+});
+
+test.describe("event detail actions", () => {
+  test.setTimeout(300_000);
+
+  /**
+   * `Button` is `shrink-0`, and `block` makes it `w-full`, so two of them in a
+   * flex row cannot shrink: the second one is pushed out of the sheet and the
+   * page scrolls sideways. They are stacked now. `CONTAINMENT_PROBE` cannot
+   * catch this because it skips everything inside the sheet's scroll container,
+   * so measure the two buttons directly.
+   */
+  for (const viewport of [
+    { name: "phone", width: 390, height: 844 },
+    { name: "tablet", width: 768, height: 1024 },
+    { name: "desktop", width: 1440, height: 900 },
+  ]) {
+    test(`Edit and Archive sit on top of each other — ${viewport.name}`, async ({ page }) => {
+      await installMocks(page, true);
+      await serveTodaysEvent(page);
+      await page.setViewportSize({ width: viewport.width, height: viewport.height });
+      await page.goto("/calendar");
+
+      const row = page.getByRole("button", { name: /Marching rehearsal/i }).first();
+      await expect(row).toBeVisible({ timeout: 60_000 });
+      await row.click();
+
+      const dialog = page.getByRole("dialog");
+      await expect(dialog).toBeVisible();
+      const edit = page.getByRole("button", { name: "Edit", exact: true });
+      const archive = page.getByRole("button", { name: "Archive", exact: true });
+      const [editBox, archiveBox, dialogBox] = await Promise.all([
+        edit.boundingBox(),
+        archive.boundingBox(),
+        dialog.boundingBox(),
+      ]);
+      expect(editBox && archiveBox && dialogBox, "the staff actions are missing").toBeTruthy();
+
+      // Archive starts below Edit, both share a left edge, and neither leaves
+      // the sheet.
+      expect(archiveBox!.y).toBeGreaterThan(editBox!.y + editBox!.height - 1);
+      expect(Math.abs(archiveBox!.x - editBox!.x)).toBeLessThan(2);
+      for (const box of [editBox!, archiveBox!]) {
+        expect(box.x).toBeGreaterThanOrEqual(dialogBox!.x - 1);
+        expect(box.x + box.width).toBeLessThanOrEqual(dialogBox!.x + dialogBox!.width + 1);
+        expect(box.y + box.height).toBeLessThanOrEqual(dialogBox!.y + dialogBox!.height + 1);
+      }
+    });
+  }
 });

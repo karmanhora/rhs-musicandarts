@@ -791,7 +791,11 @@ export function CalendarScreen() {
 
             {app.isStaff ? (
               <div className="space-y-2">
-                <div className="flex gap-2">
+                {/* Stacked, not a flex row: `Button` is `shrink-0` and `block`
+                    makes it `w-full`, so two of them in a row cannot shrink and
+                    the second one is pushed outside the sheet (see the footer
+                    note in `ui.tsx`). */}
+                <div className="space-y-2">
                   <Button
                     block
                     variant="secondary"

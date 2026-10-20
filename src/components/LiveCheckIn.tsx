@@ -228,7 +228,7 @@ export function LiveCheckIn({ event, onExit }: { event: EventRow; onExit: () => 
           </Button>
         </Card>
       ) : (
-        <div className="cue-stagger grid items-start gap-4 lg:grid-cols-[minmax(18rem,0.9fr)_minmax(0,1.1fr)]">
+        <div className="cue-stagger grid items-start gap-4 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
           {/* --- the code itself --- */}
           {/* Keyed to the session: a refreshed code lands as a fresh arrival
               instead of silently swapping pixels. */}
@@ -242,11 +242,17 @@ export function LiveCheckIn({ event, onExit }: { event: EventRow; onExit: () => 
               <QRCodeSVG value={checkinUrl} size={240} level="M" fgColor="#173b28" bgColor="#ffffff" />
             </div>
 
-            <div className="text-center">
+            {/* The code is one unbreakable token, so its size is the only thing
+                that keeps it inside the card. Eight characters at 3rem measure
+                ~288px, which fits the ~370px two-column card; the old 3.75rem
+                measured 408px and the neighbouring column covered its last
+                character. Keep the sizes in step with the test in
+                `e2e/qa-guard.spec.ts` that measures this box. */}
+            <div className="w-full min-w-0 text-center">
               <p className="type-label">Or type this code</p>
               <p
                 className={cn(
-                  "mt-1.5 font-mono text-[2.5rem] leading-none font-semibold tracking-[0.3em] sm:text-6xl",
+                  "mt-1.5 max-w-full font-mono text-[2.25rem] leading-none font-semibold tracking-[0.2em] sm:text-5xl lg:text-[3rem]",
                   expired && "text-[var(--cue-subtle)] line-through"
                 )}
               >
