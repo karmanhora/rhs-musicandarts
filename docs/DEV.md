@@ -25,7 +25,7 @@ exists, but nothing in the code assumes it is the only one.
 | `scripts/migrate/` | The clone pipeline: dump OLD → restore → migrate → verify |
 | `scripts/brand/` | Renders the PNG icons from `public/logo.svg` with a headless browser |
 | `scripts/dev/` | `verify_migrations_locally.sh` — applies every migration and runs every suite against a throwaway local database; `check_teacher_invite_race.sh` — two real connections racing for one invitation code; `check_event_digest.mjs` — the digest sender with the network stubbed |
-| `docs/` | This file, the platform plan, [`AUTH_MIGRATION.md`](AUTH_MIGRATION.md), [`TEACHER_VERIFICATION.md`](TEACHER_VERIFICATION.md), [`EMAIL_SETUP.md`](EMAIL_SETUP.md), [`BRAND_ASSETS.md`](BRAND_ASSETS.md) |
+| `docs/` | This file, the platform plan, [`AUTH_MIGRATION.md`](AUTH_MIGRATION.md), [`TEACHER_VERIFICATION.md`](TEACHER_VERIFICATION.md), [`EMAIL_SETUP.md`](EMAIL_SETUP.md), [`BRAND_ASSETS.md`](BRAND_ASSETS.md), [`SECURITY_HEADERS.md`](SECURITY_HEADERS.md) |
 | `reference/RHS-BAND/` | Read-only clone of the old app, for conventions only |
 | `.tools/pgsql/bin` | Portable PostgreSQL 18 client used by the migration scripts (gitignored) |
 
@@ -130,6 +130,7 @@ Checks:
 npm run typecheck      # tsc -b --noEmit
 npm run build          # typecheck + production bundle
 npm run preview        # serve the built bundle
+npm run check:headers  # vercel.json headers + CSP inline-script hashes (see docs/SECURITY_HEADERS.md)
 ```
 
 ## 4. Authentication (Supabase Auth is the only auth system)

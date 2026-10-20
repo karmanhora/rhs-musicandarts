@@ -1,3 +1,21 @@
 {
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        { "key": "X-Content-Type-Options", "value": "nosniff" },
+        { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" },
+        { "key": "X-Frame-Options", "value": "DENY" },
+        {
+          "key": "Permissions-Policy",
+          "value": "camera=(self), microphone=(), geolocation=(), payment=(), usb=()"
+        },
+        {
+          "key": "Content-Security-Policy",
+          "value": "default-src 'self'; script-src 'self' 'sha256-ZA06yQvIItYbO7+M5xWyx28Y94tvKzNLJZj//wo/xZc=' 'sha256-lMxn7PtmlmKIAq0k0Mgcr0uJMjDjcwgU3ehbzNgRdyo=' 'sha256-YabaTZVGsMPLF74Q/RS1XIFCfPfABBxaezLEEdAhjBQ='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://*.supabase.co; font-src 'self'; connect-src 'self' https://sjiswrvhrnrxkrfhfjrp.supabase.co wss://sjiswrvhrnrxkrfhfjrp.supabase.co; media-src 'self'; worker-src 'self'; manifest-src 'self'; frame-src 'none'; frame-ancestors 'none'; object-src 'none'; base-uri 'self'; form-action 'self'; upgrade-insecure-requests"
+        }
+      ]
+    }
+  ],
   "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
 }
