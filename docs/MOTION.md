@@ -61,10 +61,14 @@ preferences, like every other CSS animation.
   headings, one tempo step behind the line — green on time, gold when late.
 - **Arrow nudge:** an icon that promises a direction — the event picker's
   chevron — moves 4px toward it on hover or press.
-- **Check-in:** the confirmation wash resolves in 640ms, under the 700ms target;
-  the check mark scales in separately. On-time uses green; late uses gold and
-  explicit late text; refusal/error uses the error treatment and a distinct
-  optional haptic pattern.
+- **Check-in:** only a server-confirmed *new* check-in draws the confirmation.
+  The ring traces itself in 620ms, the check draws behind it in 360ms, and the
+  copy and event details fade in as they finish — the whole sequence settles in
+  about a second, and nothing waits on it. On-time uses green; late uses gold
+  and explicit late text. The RPC is idempotent, so a repeat scan answers `ok`
+  without a new row: that gets the calm already-checked-in card with no draw,
+  and refusal/error keeps the error treatment and a distinct optional haptic
+  pattern. Reduced motion shows the finished mark and copy immediately.
 - **Live view:** starting a check-in lands the code panel first and the roster
   column second. The code panel is keyed to the session token, so a refreshed
   code re-arrives as an arrival rather than swapping pixels silently. The

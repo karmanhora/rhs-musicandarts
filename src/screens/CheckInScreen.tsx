@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   CheckCircle2,
@@ -24,9 +24,12 @@ import {
 } from "../components/ui";
 import { QrScanner } from "../components/QrScanner";
 import { LiveCheckIn } from "../components/LiveCheckIn";
+import { CheckInConfirmation } from "../components/CheckInSuccess";
 import { fetchEvents, fetchSessionForEvent } from "../lib/queries";
 import { recordAttendance, recordAttendanceByCode } from "../lib/rpc";
 import type { RpcResponse } from "../lib/rpc";
+import { loadRecordedCheckins, submitCheckin } from "../lib/checkin";
+import type { CheckinKind } from "../lib/checkin";
 import type { EventRow, RpcResult } from "../lib/types";
 import { usePrograms } from "../hooks/usePrograms";
 import { CHECKIN_CODE_LENGTH, CHECKIN_MODE_LABEL, eventTypeLabel } from "../lib/constants";
@@ -45,7 +48,7 @@ import { hapticCheckIn, hapticCheckInError } from "../lib/motion";
 
 /** A token is submitted once per page load; refresh shows the same outcome. */
 const submittedTokens = new Set<string>();
-const tokenOutcomes = new Map<string, RpcResult>();
+const tokenOutcomes = new Map<string, { result: RpcResult; kind: CheckinKind }>();
 
 export function CheckInScreen() {
   const app = usePrograms();
@@ -85,10 +88,12 @@ function StudentCheckIn({ token }: { token: string | null }) {
 
 /** Submits a token from the URL exactly once and renders the outcome. */
 function TokenResult({ token }: { token: string }) {
+  const app = usePrograms();
+  const profileId = app.profile?.id ?? null;
   const [state, setState] = useState<"working" | "done">(() =>
     tokenOutcomes.has(token) || submittedTokens.has(token) ? "done" : "working"
   );
-  const [outcome, setOutcome] = useState<RpcResult | null>(
+  const [outcome, setOutcome] = useState<{ result: RpcResult; kind: CheckinKind } | null>(
     () => tokenOutcomes.get(token) ?? null
   );
   const [failure, setFailure] = useState<string | null>(null);
@@ -105,19 +110,19 @@ function TokenResult({ token }: { token: string }) {
     submittedTokens.add(token);
     void (async () => {
       try {
-        const { result, error } = await recordAttendance(token);
+        const { response, kind } = await submitCheckin(profileId, () => recordAttendance(token));
+        const { result, error } = response;
         if (error) {
           setFailure(error.message);
           hapticCheckInError();
+        } else if (result?.ok) {
+          tokenOutcomes.set(token, { result, kind });
+          setOutcome({ result, kind });
+          if (kind === "new") hapticCheckIn(Boolean(result.is_late));
         } else {
-          if (result) tokenOutcomes.set(token, result);
-          setOutcome(result);
-          if (result?.ok) {
-            hapticCheckIn(Boolean(result.is_late));
-          } else {
-            setFailure(result?.message ?? "That code didn't work.");
-            hapticCheckInError();
-          }
+          if (result) tokenOutcomes.set(token, { result, kind });
+          setFailure(result?.message ?? "That code didn't work.");
+          hapticCheckInError();
         }
       } catch (e) {
         setFailure(e instanceof Error ? e.message : "Could not check you in. Try again.");
@@ -126,7 +131,7 @@ function TokenResult({ token }: { token: string }) {
         setState("done");
       }
     })();
-  }, [token]);
+  }, [token, profileId]);
 
   if (state === "working") {
     return (
@@ -140,12 +145,12 @@ function TokenResult({ token }: { token: string }) {
     );
   }
 
-  if (outcome?.ok) return <CheckInOutcome outcome={outcome} />;
+  if (outcome?.result.ok) return <CheckInOutcome outcome={outcome.result} kind={outcome.kind} />;
 
   return (
     <div className="space-y-4">
       <Alert tone="error" className="checkin-error">
-        {failure ?? outcome?.message ?? "That check-in code didn't work."}
+        {failure ?? outcome?.result.message ?? "That check-in code didn't work."}
       </Alert>
       <p className="type-meta">
         If the code on screen has changed, ask your director or section leader for the current one.
@@ -157,33 +162,14 @@ function TokenResult({ token }: { token: string }) {
 
 /**
  * The one confirmation both flows end on: a mark, the outcome in words, and the
- * event it belongs to. Green for present, gold for late — the same two colours
- * the rest of the app uses for those states.
+ * event it belongs to. Only a check-in the server confirmed as new animates; a
+ * repeat and an unclassifiable success use the same card without it.
  */
-function CheckInOutcome({ outcome }: { outcome: RpcResult }) {
+function CheckInOutcome({ outcome, kind }: { outcome: RpcResult; kind: CheckinKind }) {
   const navigate = useNavigate();
-  const late = Boolean(outcome.is_late);
   return (
     <div className="cue-stagger space-y-3">
-      <Card role="status" aria-live="polite" className="p-5">
-        <p
-          className={cn(
-            "checkin-mark inline-flex items-center gap-2 font-semibold",
-            late ? "text-[var(--cue-late)]" : "text-[var(--cue-present)]"
-          )}
-        >
-          <CheckCircle2 aria-hidden="true" className="h-5 w-5" />
-          {late ? "Marked late" : "Present"}
-        </p>
-        <p className="type-title mt-2">{late ? "Checked in — late" : "You're checked in"}</p>
-        {outcome.event_name ? (
-          <p className="type-meta mt-1.5 tabular">
-            {outcome.event_name}
-            {outcome.checked_in_at ? ` · ${fmtTime(outcome.checked_in_at)}` : ""}
-          </p>
-        ) : null}
-        {outcome.message ? <p className="type-meta mt-1">{outcome.message}</p> : null}
-      </Card>
+      <CheckInConfirmation outcome={outcome} kind={kind} />
       <Button block variant="secondary" onClick={() => navigate("/")}>
         Done
       </Button>
@@ -194,36 +180,53 @@ function CheckInOutcome({ outcome }: { outcome: RpcResult }) {
 /** Scan-or-type check-in. Shared by students and by staff checking themselves in. */
 function CheckInForm() {
   const app = usePrograms();
+  const profileId = app.profile?.id ?? null;
   const [tab, setTab] = useState<"scan" | "code">("scan");
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
-  const [outcome, setOutcome] = useState<RpcResult | null>(null);
+  const [outcome, setOutcome] = useState<{ result: RpcResult; kind: CheckinKind } | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
+  // The camera can hand over two frames before `busy` repaints; this refuses
+  // the second one synchronously, so one scan is one submission.
+  const inFlight = useRef(false);
 
-  const submit = useCallback(async (run: () => Promise<RpcResponse>) => {
-    setBusy(true);
-    setFailure(null);
-    try {
-      const { result, error } = await run();
-      if (error) {
-        setFailure(error.message);
+  // Read what is already recorded while the camera opens, so the submit itself
+  // does not wait on a second round trip.
+  useEffect(() => {
+    if (profileId) void loadRecordedCheckins(profileId).catch(() => undefined);
+  }, [profileId]);
+
+  const submit = useCallback(
+    async (run: () => Promise<RpcResponse>) => {
+      if (inFlight.current) return;
+      inFlight.current = true;
+      setBusy(true);
+      setFailure(null);
+      try {
+        const { response, kind } = await submitCheckin(profileId, run);
+        const { result, error } = response;
+        if (error) {
+          setFailure(error.message);
+          hapticCheckInError();
+          return;
+        }
+        if (result?.ok) {
+          setOutcome({ result, kind });
+          if (kind === "new") hapticCheckIn(Boolean(result.is_late));
+        } else {
+          setFailure(result?.message ?? "That didn't work — ask for a fresh code.");
+          hapticCheckInError();
+        }
+      } catch (e) {
+        setFailure(e instanceof Error ? e.message : "Could not check you in. Try again.");
         hapticCheckInError();
-        return;
+      } finally {
+        inFlight.current = false;
+        setBusy(false);
       }
-      setOutcome(result);
-      if (result?.ok) {
-        hapticCheckIn(Boolean(result.is_late));
-      } else {
-        setFailure(result?.message ?? "That didn't work — ask for a fresh code.");
-        hapticCheckInError();
-      }
-    } catch (e) {
-      setFailure(e instanceof Error ? e.message : "Could not check you in. Try again.");
-      hapticCheckInError();
-    } finally {
-      setBusy(false);
-    }
-  }, []);
+    },
+    [profileId]
+  );
 
   const onDecode = useCallback(
     (text: string) => {
@@ -240,7 +243,7 @@ function CheckInForm() {
 
   const onScannerError = useCallback((message: string) => setFailure(message), []);
 
-  if (outcome?.ok) return <CheckInOutcome outcome={outcome} />;
+  if (outcome?.result.ok) return <CheckInOutcome outcome={outcome.result} kind={outcome.kind} />;
 
   return (
     <div className="cue-stagger space-y-4">

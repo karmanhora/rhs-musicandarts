@@ -818,6 +818,182 @@ a[href] {
   }
 }
 
+/*
+ * The check-in confirmation. One sequence, about a second long, played only
+ * when the server confirms a check-in that did not exist before the scan: the
+ * glow settles, the ring draws itself, the check follows, then the words
+ * arrive. Green for on time, gold for late — the same meaning those colours
+ * carry everywhere else. Nothing else on the page waits for it.
+ */
+.cue-success {
+  --success-accent: var(--cue-present);
+  position: relative;
+}
+
+.cue-success[data-late="true"] {
+  --success-accent: var(--cue-late);
+}
+
+.cue-success-stage {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 7rem;
+  height: 7rem;
+  margin-inline: auto;
+  isolation: isolate;
+}
+
+.cue-success-glow {
+  position: absolute;
+  inset: -18%;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle,
+    color-mix(in srgb, var(--success-accent) 26%, transparent) 0%,
+    transparent 68%
+  );
+  animation: cue-success-glow 900ms var(--spring-settle) both;
+}
+
+.cue-success-ripple {
+  position: absolute;
+  inset: 6%;
+  border-radius: 50%;
+  border: 1.5px solid color-mix(in srgb, var(--success-accent) 42%, transparent);
+  animation: cue-success-ripple 900ms var(--spring-settle) 120ms both;
+}
+
+.cue-success-mark {
+  position: relative;
+  width: 6rem;
+  height: 6rem;
+  transform-origin: center;
+  animation: cue-success-settle 560ms var(--spring-settle) both;
+}
+
+.cue-success-track {
+  stroke: color-mix(in srgb, var(--success-accent) 18%, transparent);
+}
+
+/* Raw lengths rather than `pathLength`, which older Safari gets wrong on a
+ * circle: 2πr for r=45, and the check path's own length with a little spare. */
+.cue-success-ring {
+  stroke: var(--success-accent);
+  stroke-dasharray: 283;
+  stroke-dashoffset: 283;
+  animation: cue-success-ring 620ms var(--ease-standard) 60ms both;
+}
+
+.cue-success-check {
+  stroke: var(--success-accent);
+  stroke-dasharray: 60;
+  stroke-dashoffset: 60;
+  animation: cue-success-check 360ms var(--ease-standard) 480ms both;
+}
+
+.cue-success-copy {
+  animation: cue-success-copy 300ms var(--spring-settle) 560ms both;
+}
+
+.cue-success-details {
+  animation: cue-success-copy 280ms var(--spring-settle) 700ms both;
+}
+
+@keyframes cue-success-settle {
+  from {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes cue-success-glow {
+  from {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes cue-success-ripple {
+  from {
+    opacity: 0.55;
+    transform: scale(0.72);
+  }
+  to {
+    opacity: 0;
+    transform: scale(1.32);
+  }
+}
+
+@keyframes cue-success-ring {
+  from {
+    stroke-dashoffset: 283;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes cue-success-check {
+  from {
+    opacity: 0;
+    stroke-dashoffset: 60;
+  }
+  20% {
+    opacity: 1;
+  }
+  to {
+    opacity: 1;
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes cue-success-copy {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/*
+ * With motion reduced, the confirmation is simply already there: no draw, no
+ * scale, no delay to wait through. The global rule shortens the animations; a
+ * delay would still hold the hidden state, so the delays are cleared too.
+ */
+@media (prefers-reduced-motion: reduce) {
+  .cue-success-glow,
+  .cue-success-ripple,
+  .cue-success-mark,
+  .cue-success-ring,
+  .cue-success-check,
+  .cue-success-copy,
+  .cue-success-details {
+    animation-delay: 0s;
+  }
+}
+
+.reduce-motion .cue-success-glow,
+.reduce-motion .cue-success-ripple,
+.reduce-motion .cue-success-mark,
+.reduce-motion .cue-success-ring,
+.reduce-motion .cue-success-check,
+.reduce-motion .cue-success-copy,
+.reduce-motion .cue-success-details {
+  animation-delay: 0s;
+}
+
 .checkin-error {
   animation: checkin-error var(--motion-base) var(--ease-standard) both;
 }
