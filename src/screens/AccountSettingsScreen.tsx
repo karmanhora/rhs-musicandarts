@@ -593,7 +593,7 @@ function PreferencesTab() {
                   key={membership.id}
                   icon={<Mail aria-hidden="true" className="h-4 w-4" />}
                   title={membership.ensemble.name}
-                  subtitle={on ? "On — included in your event email" : "Off — no event emails"}
+                  subtitle={on ? "On — digests, new events and reminders" : "Off — no event emails"}
                   trailing={
                     <Toggle
                       checked={on}
@@ -607,9 +607,10 @@ function PreferencesTab() {
           </List>
         )}
         <p className="type-meta mt-3">
-          At most one email a day, listing what is coming up in the next week across your programs —
-          together, so two programs are still one email. A quiet week sends nothing. The bell in the
-          header is separate and always on.
+          One setting covers every event email: the daily digest of the next week across your
+          programs (together, so two programs are still one email), a short note when a new event is
+          added, and a reminder two days before it starts. A quiet week sends nothing. The bell in
+          the header is separate and always on.
         </p>
       </section>
     </div>

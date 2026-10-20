@@ -47,6 +47,17 @@ deployment stay untouched.
       functions reuse the existing `RESEND_API_KEY`, `RESEND_FROM` and
       `PUBLIC_APP_URL`; `REMINDER_FROM_NAME` / `MAKEUP_FROM_NAME` are optional
       and default to `RHS Music & Arts`.
+- [x] **Done 2026-10-20** — after applying migration
+      `20261019120000_event_announcements.sql`, deploy the new-event announcement
+      sender:
+      `supabase functions deploy event-announcements --project-ref <NEW_PROJECT_REF> --no-verify-jwt --use-api`.
+      Server-to-server only (no CORS): it refuses every call without the
+      `x-event-announcement-secret` header or the exact service-role bearer.
+      `[functions.event-announcements] verify_jwt = false` in `supabase/config.toml`.
+- [x] **Done 2026-10-20** — add `EVENT_ANNOUNCEMENT_SECRET` to the function secrets (long random value;
+      the announcement cron job in §2 sends it as `x-event-announcement-secret`).
+      The function reuses `RESEND_API_KEY`, `RESEND_FROM` and `PUBLIC_APP_URL`;
+      `ANNOUNCEMENT_FROM_NAME` is optional and defaults to `RHS Music & Arts`.
 - [ ] Note: `sync_google_calendar` currently runs with `verify_jwt = false` and
       accepts any signed-in user. Tightening to staff-only is **Phase 3 work**
       (docs/PLATFORM_PLAN.md §6 #4) — known and accepted for the clone window.
@@ -162,6 +173,51 @@ deployment stay untouched.
       Then confirm one real run and that
       `select count(*) from public.event_reminder_deliveries` rises. A second
       run for the same schedule must send nothing.
+
+### New-event announcements (migration 20261019120000)
+
+- [x] **Done 2026-10-20** — store the announcement secret in **Vault** (never in
+      `cron.job` plain text):
+
+      ```sql
+      select vault.create_secret('<EVENT_ANNOUNCEMENT_SECRET>', 'event_announcement_secret',
+        'x-event-announcement-secret header for the event-announcements cron job');
+      ```
+
+- [x] **Done 2026-10-20** (`event-announcements`, job 2) — schedule it **every 5
+      minutes**, so a newly added event is announced within
+      a few minutes of Save. The queue only holds events that are still to come
+      and after the cutover, so an old calendar is never mailed:
+
+      ```sql
+      select cron.schedule('event-announcements', '*/5 * * * *', $$
+        select net.http_post(
+          url := 'https://<NEW_PROJECT_REF>.supabase.co/functions/v1/event-announcements',
+          headers := jsonb_build_object(
+            'x-event-announcement-secret',
+            (select decrypted_secret from vault.decrypted_secrets
+              where name = 'event_announcement_secret'),
+            'Content-Type', 'application/json'),
+          body := '{}'::jsonb);
+      $$);
+      ```
+
+- [x] **Done 2026-10-20** — before scheduling, run it once by hand with
+      `{"dry_run": true}` and read the
+      JSON. Nothing is sent; it names every due student, event and subject:
+
+      ```bash
+      curl -sS -X POST "https://<NEW_PROJECT_REF>.supabase.co/functions/v1/event-announcements" \
+        -H "Content-Type: application/json" \
+        -H "x-event-announcement-secret: <EVENT_ANNOUNCEMENT_SECRET>" \
+        -d '{"dry_run": true}'
+      ```
+
+- [ ] Still to verify with real data: add one event in the app (not a synthetic
+      row) and confirm exactly one row per student in
+      `public.event_announcement_deliveries` with `status = 'sent'`. A second run
+      must send nothing. Not done on 2026-10-20 to avoid mailing the roster as a
+      test.
 
 - [ ] **Vercel Cron is not used here.** The deployment in `vercel.json` is a
       static SPA rewrite: there is no `api/` directory, no build step on Vercel

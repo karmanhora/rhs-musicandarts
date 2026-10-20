@@ -78,6 +78,12 @@ verify_jwt = false
 [functions.event-reminders]
 verify_jwt = false
 
+# Scheduled, server-to-server only. Called by Supabase Cron with the
+# `x-event-announcement-secret` header (EVENT_ANNOUNCEMENT_SECRET). It mails
+# students when an event is added, so no browser may trigger a run.
+[functions.event-announcements]
+verify_jwt = false
+
 # Browser-invoked by staff (the make-up composer). The platform verifies the
 # JWT, and the function verifies the account and its program staff role again
 # before reading attendance or calling Resend. Default is true; kept explicit so

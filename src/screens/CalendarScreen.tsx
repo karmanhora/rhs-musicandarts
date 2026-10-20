@@ -891,7 +891,11 @@ export function CalendarScreen() {
         open={form !== null}
         onClose={() => setForm(null)}
         title={form?.id ? "Edit event" : "Add event"}
-        description="Everyone in this program gets a notification when you save."
+        description={
+          form?.id
+            ? "Everyone in this program gets a notification when you save."
+            : "Everyone in this program gets a notification. Students also get an email with the date, time and where to be."
+        }
         size="tall"
         footer={
           <>
@@ -907,6 +911,14 @@ export function CalendarScreen() {
         {form ? (
           <div className="space-y-4">
             {formError ? <Alert tone="error">{formError}</Alert> : null}
+
+            {!form.id ? (
+              <p className="type-meta rounded-[var(--cue-radius)] bg-[var(--cue-raised)] px-3 py-2.5">
+                Saving emails the students in this program the event name, date, start time and
+                location. It sends once — editing the event later does not email again. Students who
+                turned off event emails in Account settings get the notification only.
+              </p>
+            ) : null}
 
             <Field label="Name">
               <Input

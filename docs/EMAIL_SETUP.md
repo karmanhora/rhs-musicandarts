@@ -416,6 +416,71 @@ database rules.
 anonymous call (`401`); it is reachable only with a signed-in staff JWT. The
 frontend that calls it ships with the next app deploy.
 
+## 6d. App email: a new event was added
+
+Migration `20261019120000_event_announcements.sql` + the `event-announcements`
+edge function add the third scheduled app email: **one message per student per
+event, sent shortly after someone adds the event to the calendar.** It uses the
+digest's Resend API transport (§6a), not the auth SMTP relay. The email carries
+the event name, type, date, **start time** (or “All day”), location and program —
+the answer to “what is it and when am I supposed to be there” without opening
+the app.
+
+- **Who is due** — `public.due_event_announcements(now)` returns active members of
+  the event's program who are active, subscribed (`email_upcoming_events`), not
+  deactivated, have a confirmed address, and hold a student role (director and
+  secretary are staff and are excluded; section leaders are students and are
+  included). The event must be **manually created** (calendar-sync imports are
+  covered by the digest and the 48-hour reminder instead), not archived, in an
+  active program, after the cutover, still to come, and have no announcement
+  already claimed. The event's creator is skipped — they just made it.
+- **The cutover** — `event_announcement_settings.enabled_since` is written when
+  the migration is applied. Events created before it are never announced, so
+  deploying this does not mail the whole existing calendar. A seven-day lookback
+  also keeps a long outage from mailing stale announcements.
+- **Still to come** — a timed event is only announced before its start; an
+  all-day event is announced while its day (or saved end date) is still running.
+  A run that is days late cannot announce an event that is over. The sender
+  re-reads the event after the claim and refuses if it was archived or has
+  started, so the message always describes the latest saved schedule and
+  location.
+- **One setting, all event email** — this follows the same *Upcoming events by
+  email* switch per program in Account settings (§6a), and the email's footer
+  says so and links to it. The bell is separate.
+- **No duplicates** — `claim_event_announcement()` inserts the unique
+  `(event_id, user_id)` delivery row **before** the send, so overlapping runs
+  cannot both mail one student. It re-checks the roster, the address and the
+  event, so an opt-out, removal, archive or reschedule between the queue read
+  and the send is respected. `complete_event_announcement()` records `sent` or
+  `failed` with the attempt count; failures retry on later runs, up to **3
+  attempts**. The Resend `Idempotency-Key` is
+  `event-announcement:<event>:<student>`.
+- **Secrets** — `EVENT_ANNOUNCEMENT_SECRET` (the cron header), plus the existing
+  `RESEND_API_KEY`, `RESEND_FROM` and `PUBLIC_APP_URL`;
+  `ANNOUNCEMENT_FROM_NAME` is optional and defaults to “RHS Music & Arts”. The
+  function refuses every call without the shared secret or the service-role
+  bearer.
+- **The schedule** — Supabase Cron, every 5 minutes. The SQL is in
+  `scripts/migrate/04_functions_config.md` §2.
+- **Testing it honestly** — `node scripts/dev/check_event_announcements.mjs` runs
+  the real function with no network: secret refusal, dry run, subject/text/HTML
+  contents (including both sides of a daylight-saving change), the claim-before-
+  send order, duplicate protection, a recorded failure and a missing key.
+  `supabase/tests/event_announcements.sql` covers the database rules. A live dry
+  run is `{"dry_run": true}` with the `x-event-announcement-secret` header: it
+  names every due student and rendered subject and sends nothing. A real run
+  ignores `now`.
+- **Editing an event** — only a *new* event is announced. Editing an existing one
+  sends no email; the digest and the 48-hour reminder pick up a changed time.
+- **Current state (2026-10-20)** — migration `20261019120000` is applied (cutover
+  `enabled_since` 2026-10-20 05:04 UTC, so nothing already on the calendar is
+  queued), `event-announcements` is deployed without platform JWT verification,
+  `EVENT_ANNOUNCEMENT_SECRET` is set, the Vault secret
+  `event_announcement_secret` exists, and the `event-announcements` cron job
+  (job 2, every 5 minutes) is active. A dry run returned `ok: true` with
+  `recipients: 0`. No test event has been added to production, so the first real
+  send will be the first event someone adds after this cutover.
+
 ## 7. Never
 
 Put a key, token, SMTP password, sender credential or tracking pixel in a
