@@ -280,6 +280,142 @@ transport from the auth relay in §3, even though both are Resend.
   `node scripts/dev/check_event_digest.mjs` checks the sender's logic locally
   with no network at all.
 
+## 6b. App email: the 48-hour event reminder
+
+Migration 036 + the `event-reminders` edge function add a second scheduled app
+email: **exactly one reminder per student per event schedule, due 48 hours
+before the event starts.** It uses the same Resend API transport as the digest
+(§6a), not the auth SMTP relay.
+
+- **Who is due** — `public.due_event_reminders(now)` returns active members of
+the event's program who are active, subscribed (`email_upcoming_events`), not
+deactivated, have a confirmed address, and hold a student role (not director or
+secretary). The event must be active, not archived, in the future, **at most 48
+hours away and at least 12 hours away**, and it must have existed before its own
+48-hour mark. All of that is one SQL query, so the sender cannot drift from it.
+- **48 hours is an instant.** Event times are `timestamptz`; the window is
+`ev.date <= now() + interval '48 hours'` and `ev.date >= now() + interval '12
+hours'`. A daylight-saving change neither moves the reminder nor changes the
+instant. Rendering uses **America/Los_Angeles**, the school clock the digest
+also uses. There is no per-event timezone column in this schema; adding one is a
+separate product decision and is not needed for the send time.
+- **Created late** — an event created *after* `date - 48 hours` is skipped, never
+mailed immediately (the requirement's explicit rule). Rescheduling it further
+out can make it eligible again, which is correct: its creation time is then
+before the new 48-hour mark.
+- **Rescheduled** — the delivery key is `(event_id, user_id, event_start)`, so a  new start time is a new schedule version: the old reminder is not repeated and
+  the new time gets its own. The queue, the claim **and the sender** all read the
+  latest `events.date`; the sender re-reads the event immediately before
+  rendering and refuses if it was archived or has started, so a mail can never
+  announce a superseded time.
+- **Cancelled** — this app represents a cancelled event as `archived = true`.
+Archived events and archived programs are excluded in the queue **and** in
+`claim_event_reminder()`.
+- **Late job / stale reminders** — a reminder is only sent while the event is
+still at least 12 hours away. A run that is hours late cannot deliver a "in two
+days" message on the event's doorstep, and nothing is sent after the event
+starts.
+- **No duplicates** — `claim_event_reminder()` inserts the unique delivery row
+**before** the send, so two overlapping cron runs cannot both mail one student.
+The row is completed with the Resend id (or the failure). A failed send is
+recorded and retried on later runs, up to **3 attempts**; the Resend
+`Idempotency-Key` is `event-reminder:<event>:<student>:<start>`, which also
+covers an ambiguous network timeout.
+- **Retries** — `complete_event_reminder()` records `sent` or `failed` with the
+attempt count; `due_event_reminders()` re-offers a failed row until it has made
+three attempts. Nothing else is retried automatically.
+- **Secrets** — `EVENT_REMINDER_SECRET` (the cron header), plus the existing
+`RESEND_API_KEY`, `RESEND_FROM`, optional `REMINDER_FROM_NAME` and
+`PUBLIC_APP_URL`. The function refuses to run without its shared secret.
+- **The schedule** — Supabase Cron, every 15 minutes, exactly like the digest.
+The SQL is in `scripts/migrate/04_functions_config.md` §2. The job is **live**
+(`event-reminders`, job 1, created 2026-10-20); `cron.job` was empty before it,
+so this is the only scheduled mail job on the project.
+- **Current state (2026-10-20)** — migration 036 is applied, both functions are
+deployed (`event-reminders` without platform JWT verification, authorised by the
+Vault-backed `x-event-reminder-secret`; `send-makeup-emails` with it), the
+function secret `EVENT_REMINDER_SECRET` is set, and the Vault secret plus the
+15-minute job exist. A dry run returned `ok: true` with nothing due, and the
+job's own `net.http_post` path was exercised once: `200`, `due: 0`. **The
+frontend is not deployed yet**, so the Attendance-screen composer is not live.
+- **Testing it honestly** — run it with `{"dry_run": true}` and the
+`x-event-reminder-secret` header: the JSON names every due student, event and
+rendered subject, and sends nothing. `dry_run` also accepts a `now` override so
+the 48-hour boundary can be exercised without waiting. A real run ignores
+`now`. `node scripts/dev/check_event_reminders.mjs` checks the sender locally
+with no network, including both daylight-saving renderings.
+
+## 6c. App email: post-event make-up instructions
+
+Migration 036 + the `send-makeup-emails` edge function let authorized program
+staff mail the students marked **absent** for a completed event. This is the
+only app mail a browser can trigger.
+
+- **Where** — Attendance screen, below the roll, for staff with
+`attendance.mark_present` (director, secretary, or a custom role holding it):
+**Email Students Who Missed This Event**. The button is disabled until the
+saved end time, with the message *Available after this event ends.* A client
+timer re-enables it without a refresh; the timer is presentation only.
+- **The server decides** — `send-makeup-emails` verifies the JWT
+(`verify_jwt = true`), reads the caller's profile, and calls
+`begin_makeup_email_campaign()`, which re-checks the staff capability, the
+latest `end_date`, the archived event/program state, and **`now() >= end_date`**.
+A missing end time, an end before the start, an archived event, or an archived
+program is refused with a message. The function re-reads the event schedule
+again during a long send, and renders `{event_date}` / `{event_time}` from that
+latest saved schedule — not the snapshot taken when the composer opened. The
+frontend clock cannot authorize anything.
+- **Who receives it** — only students with a confirmed `attendance_records.status
+= 'absent'` row for that event, an active membership in the event's program, a
+confirmed address, and no deactivated flag. Present, late and excused are not
+included (late is not treated as absent for make-up). Director/secretary staff
+accounts are excluded. A student with **no attendance row** is not assumed
+absent: the composer lists them separately for review, to be marked on the roll
+if needed.
+- **Composer** — editable subject, editable message body, separate make-up
+instructions field, placeholder help, live preview, recipient list with
+the count and per-student remove, unmarked-student review, a warning list for
+unresolved placeholders or empty instructions, and a final confirmation before
+sending. Attendance is never modified by opening, previewing or sending.
+- **Placeholders** — `{student_name}`, `{event_name}`, `{event_date}`,
+`{event_time}`, `{program_name}`, `{teacher_name}`, `{makeup_instructions}`.
+Substitution happens server-side per recipient; the preview uses the same
+tokens. Subject newlines are stripped, the body is HTML-escaped and rendered as
+text with line breaks, and the lengths are capped (subject 200, instructions
+4,000, body 8,000).
+- **Not the digest preference** — `memberships.email_upcoming_events` controls
+the *upcoming-events* digest, not a teacher's post-event make-up instructions.
+The make-up email is a direct staff communication to the students the
+attendance record says missed the event, so it is not gated by that opt-out.
+- **One at a time** — every recipient gets a separate Resend call with one `to`,
+so no student sees another's address. The response reports **accepted for
+delivery** and **failed** separately. Resend accepting a message is not a
+guarantee it reached an inbox.
+- **No duplicate sends** — the browser sends a `client_operation_id`; the unique
+`(created_by, client_operation_id)` key makes a double-click or a retried chunk
+one campaign. `(campaign_id, user_id)` is unique. An `accepted` row is never
+selected again, and `record_makeup_email_delivery()` refuses to overwrite it.
+Retrying failures sends only those recipients (a new operation is a deliberate
+follow-up). The Resend `Idempotency-Key` is stable for the campaign + student,
+so two concurrent or ambiguous copies of the same send collapse to one, while a
+new operation gets a new campaign id and therefore a fresh key.
+- **Rate limit** — at most 10 new campaigns per teacher per 10 minutes, and 500
+recipients per campaign. Bigger sends are refused with a message rather than
+silently truncated.
+- **Auditability without extra personal data** — `event_makeup_campaigns` stores
+the event, teacher, subject/body the teacher wrote, the schedule snapshot and
+time; `event_makeup_deliveries` stores recipient profile id, status, Resend id
+and error. Neither stores a copy of the address, and both are deny-all to
+clients. Only the service role reads them.
+- **Testing it honestly** — `node scripts/dev/check_makeup_emails.mjs` exercises
+the function with no network: bearer refusal, malformed input, refusal mapping,
+per-recipient payloads, partial failure, archived-mid-send, and that no address
+is returned to the caller. `supabase/tests/event_emails.sql` covers the
+database rules.
+- **Current state (2026-10-20)** — the function is deployed and refuses an
+anonymous call (`401`); it is reachable only with a signed-in staff JWT. The
+frontend that calls it ships with the next app deploy.
+
 ## 7. Never
 
 Put a key, token, SMTP password, sender credential or tracking pixel in a

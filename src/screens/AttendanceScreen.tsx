@@ -34,6 +34,7 @@ import {
   cn,
   useToast,
 } from "../components/ui";
+import { MakeupEmailPanel } from "../components/MakeupEmailComposer";
 import { fetchAttendance, fetchEvents, fetchRoster, fetchStaffNotes } from "../lib/queries";
 import { overrideAttendance } from "../lib/rpc";
 import type { AttendanceRow, AttendanceStatus, EventRow, RosterMember } from "../lib/types";
@@ -450,6 +451,7 @@ export function AttendanceScreen() {
             />
           </div>
         ) : !selected ? null : (
+          <>
           <section aria-label="The roll">
             <div className="cue-card overflow-hidden rounded-[var(--radius-panel)]">
               {/* --- the figures, then the meter --- */}
@@ -641,6 +643,11 @@ export function AttendanceScreen() {
               excused or absent, or to leave a staff note.
             </p>
           </section>
+
+          {/* Staff of the program only. The server refuses everyone else, and
+              re-checks the event's latest end time before a single send. */}
+          {app.can("attendance.mark_present") ? <MakeupEmailPanel event={selected} /> : null}
+          </>
         )}
       </div>
 

@@ -34,6 +34,19 @@ deployment stay untouched.
   - [x] `PUBLIC_APP_URL` = `https://rhsattendance.org` — set 2026-10-18
   - [ ] `GOOGLE_CALENDAR_ICS_URL` (the RHS Band public ICS feed)
   - [ ] `CALENDAR_SYNC_SECRET` (long random value for scheduled sync calls)
+- [x] **Done 2026-10-20** — after applying migration 036, deploy the two event-email functions:
+      `supabase functions deploy event-reminders --project-ref <NEW_PROJECT_REF> --no-verify-jwt --use-api`
+      and
+      `supabase functions deploy send-makeup-emails --project-ref <NEW_PROJECT_REF> --use-api`.
+      `event-reminders` is server-to-server only (no CORS); it refuses every call
+      without the `x-event-reminder-secret` header. `send-makeup-emails` is
+      browser-invoked, keeps `verify_jwt = true`, and re-checks the caller's
+      staff capability in the database.
+- [x] **Done 2026-10-20** — add `EVENT_REMINDER_SECRET` to the function secrets (long random value;
+      the reminder cron job sends it as `x-event-reminder-secret`). The two new
+      functions reuse the existing `RESEND_API_KEY`, `RESEND_FROM` and
+      `PUBLIC_APP_URL`; `REMINDER_FROM_NAME` / `MAKEUP_FROM_NAME` are optional
+      and default to `RHS Music & Arts`.
 - [ ] Note: `sync_google_calendar` currently runs with `verify_jwt = false` and
       accepts any signed-in user. Tightening to staff-only is **Phase 3 work**
       (docs/PLATFORM_PLAN.md §6 #4) — known and accepted for the clone window.
@@ -106,6 +119,56 @@ deployment stay untouched.
       emails arrive and `select count(*) from public.event_digest_deliveries`
       rises. Running it twice in a row must email nobody the second time: that is
       the once-per-day key doing its job.
+
+### Event reminders (migration 036)
+
+- [x] **Done 2026-10-20** — store the reminder secret in **Vault** (never in
+      `cron.job` plain text):
+
+      ```sql
+      select vault.create_secret('<EVENT_REMINDER_SECRET>', 'event_reminder_secret',
+        'x-event-reminder-secret header for the event-reminders cron job');
+      ```
+
+- [x] **Done 2026-10-20** (`event-reminders`, job 1; `cron.job` was empty before
+      it) — schedule it **every 15 minutes**. The sender computes “48 hours
+      before” from `events.date`, so a 15-minute cadence is the maximum lateness
+      (and a reminder is skipped entirely if the job runs so late that under 12
+      hours remain):
+
+      ```sql
+      select cron.schedule('event-reminders', '*/15 * * * *', $$
+        select net.http_post(
+          url := 'https://<NEW_PROJECT_REF>.supabase.co/functions/v1/event-reminders',
+          headers := jsonb_build_object(
+            'x-event-reminder-secret',
+            (select decrypted_secret from vault.decrypted_secrets
+              where name = 'event_reminder_secret'),
+            'Content-Type', 'application/json'),
+          body := '{}'::jsonb);
+      $$);
+      ```
+
+- [x] **Done 2026-10-20** — before scheduling, run it once by hand with `{"dry_run": true}` and read
+      the JSON. Nothing is sent; it names every due student, subject and event:
+
+      ```bash
+      curl -sS -X POST "https://<NEW_PROJECT_REF>.supabase.co/functions/v1/event-reminders" \
+        -H "Content-Type: application/json" \
+        -H "x-event-reminder-secret: <EVENT_REMINDER_SECRET>" \
+        -d '{"dry_run": true}'
+      ```
+
+      Then confirm one real run and that
+      `select count(*) from public.event_reminder_deliveries` rises. A second
+      run for the same schedule must send nothing.
+
+- [ ] **Vercel Cron is not used here.** The deployment in `vercel.json` is a
+      static SPA rewrite: there is no `api/` directory, no build step on Vercel
+      that could run a job, and the project already schedules its mail through
+      Supabase Cron (`pg_cron` + `pg_net`). Adding a Vercel cron would create a
+      second scheduler with no database clock and no shared idempotency key.
+      The 15-minute job above is the production scheduler.
 
 ## 3. Auth configuration — Supabase Auth
 

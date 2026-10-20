@@ -150,6 +150,68 @@ export interface EventRow {
   created_at: string;
 }
 
+/**
+ * One confirmed-absent recipient of a make-up email (migration 036). The
+ * composer receives names and statuses only — the server holds the addresses
+ * and resolves them when it sends.
+ */
+export interface MakeupEmailRecipient {
+  user_id: string;
+  name: string;
+  section: string;
+  status: "absent";
+}
+
+/** An active student with no attendance row — shown for review, never mailed. */
+export interface MakeupEmailUnmarked {
+  user_id: string;
+  name: string;
+  section: string;
+}
+
+/**
+ * `makeup_email_context()` (036): whether the event may be mailed about now,
+ * why not when it may not, and the two recipient groups. Staff-only; no
+ * addresses are returned.
+ */
+export interface MakeupEmailContext {
+  ok: boolean;
+  message?: string;
+  can_send?: boolean;
+  reason?: string | null;
+  event?: {
+    id: string;
+    name: string;
+    date: string;
+    end_date: string | null;
+    all_day: boolean;
+    location: string;
+    archived: boolean;
+  };
+  program_name?: string;
+  teacher_name?: string;
+  recipients?: MakeupEmailRecipient[];
+  unmarked?: MakeupEmailUnmarked[];
+}
+
+/** One Resend result returned by the `send-makeup-emails` function. */
+export interface MakeupEmailSendResult {
+  user_id: string;
+  name: string;
+  status: "accepted" | "failed";
+  error?: string;
+}
+
+/** The sending function's answer for one chunk of recipients. */
+export interface MakeupEmailSendResponse {
+  ok: boolean;
+  message?: string;
+  campaign_id?: string;
+  accepted?: number;
+  failed?: number;
+  results?: MakeupEmailSendResult[];
+}
+
 export interface CheckinSessionRow {
   id: string;
   event_id: string;

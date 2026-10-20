@@ -2,6 +2,8 @@ import type { PostgrestError } from "@supabase/supabase-js";
 import type { AuthAudience } from "./constants";
 import { supabase } from "./supabase";
 import type {
+  MakeupEmailContext,
+  MakeupEmailSendResponse,
   MyAttendanceRow,
   ProgramOption,
   RpcResult,
@@ -481,3 +483,63 @@ export const setEmailUpcomingEvents = (programId: string, enabled: boolean) =>
  */
 export const getDigestReachability = (programId: string, days = 7) =>
   callRpc("digest_reachability", { p_ensemble: programId, p_days: days });
+
+// --- Post-event make-up email (migration 036) -------------------------------
+
+/**
+ * Staff-only context for the make-up composer: whether the event has ended and
+ * may be mailed about, the event/program/teacher names, the confirmed-absent
+ * recipients, and — separately — students with no attendance record.
+ *
+ * It returns no addresses; the sending function resolves those on the server.
+ * Refused for anyone who is not staff of the event's program.
+ */
+export async function getMakeupEmailContext(
+  eventId: string
+): Promise<{ context: MakeupEmailContext | null; error: string | null }> {
+  const { data, error } = await supabase.rpc("makeup_email_context", { p_event: eventId });
+  if (error) return { context: null, error: error.message };
+  return { context: (data ?? null) as MakeupEmailContext | null, error: null };
+}
+
+/**
+ * Send one chunk of a make-up operation. The Edge Function re-checks the
+ * caller's staff role, the event's latest end time and the eligible absentees,
+ * so `recipientIds` can only narrow the server's list. Passing the same
+ * `operationId` again resumes the same campaign and skips anyone already
+ * accepted; that is what makes a retry safe.
+ */
+export async function sendMakeupEmailChunk(payload: {
+  eventId: string;
+  operationId: string;
+  subject: string;
+  instructions: string;
+  bodyTemplate: string;
+  recipientIds?: string[];
+}): Promise<{ result: MakeupEmailSendResponse | null; error: string | null }> {
+  const { data, error } = await supabase.functions.invoke<MakeupEmailSendResponse>(
+    "send-makeup-emails",
+    {
+      body: {
+        event_id: payload.eventId,
+        client_operation_id: payload.operationId,
+        subject: payload.subject,
+        instructions: payload.instructions,
+        body_template: payload.bodyTemplate,
+        ...(payload.recipientIds ? { recipient_ids: payload.recipientIds } : {}),
+      },
+    }
+  );
+
+  if (!error) return { result: data ?? null, error: null };
+
+  if (error.context instanceof Response) {
+    try {
+      const body = (await error.context.clone().json()) as { error?: string };
+      if (body.error) return { result: null, error: body.error };
+    } catch {
+      // Keep the Functions client's message when the response is not JSON.
+    }
+  }
+  return { result: null, error: error.message };
+}

@@ -18,13 +18,13 @@ exists, but nothing in the code assumes it is the only one.
 | Path | What it is |
 | --- | --- |
 | `src/` | The web app: Vite + React 19 + TypeScript + Tailwind v4 |
-| `supabase/migrations/007`–`035` | The multi-program schema, policies, RPCs, calendar sync, join flow, Supabase Auth identity, teacher-gated `create_program`, account/program lifecycle, staff-managed email invitations, the capability layer (029), profile pictures (030), program instruments + complete removal (031), the scheduled digest (032–033), pinned function search paths (034), and teacher/director verification by invitation code (035) |
-| `supabase/tests/` | SQL suites (backfill, isolation, security, join, create program, signup account type, teacher invitations, account deletion, program archive, email invites, capabilities & avatars, program sections & removal, digest reachability) run inside transactions |
+| `supabase/migrations/007`–`036` | The multi-program schema, policies, RPCs, calendar sync, join flow, Supabase Auth identity, teacher-gated `create_program`, account/program lifecycle, staff-managed email invitations, the capability layer (029), profile pictures (030), program instruments + complete removal (031), the scheduled digest (032–033), pinned function search paths (034), teacher/director verification by invitation code (035), and the 48-hour reminder + post-event make-up email queues (036) |
+| `supabase/tests/` | SQL suites (backfill, isolation, security, join, create program, signup account type, teacher invitations, account deletion, program archive, email invites, capabilities & avatars, program sections & removal, digest reachability, event reminder + make-up email rules) run inside transactions |
 | `supabase/templates/` | Branded Supabase auth emails and the password-change security notification — see [`EMAIL_SETUP.md`](EMAIL_SETUP.md) |
 | `public/` | The app's brand assets: one `logo.svg` and the icons rendered from it — see [`BRAND_ASSETS.md`](BRAND_ASSETS.md) |
 | `scripts/migrate/` | The clone pipeline: dump OLD → restore → migrate → verify |
 | `scripts/brand/` | Renders the PNG icons from `public/logo.svg` with a headless browser |
-| `scripts/dev/` | `verify_migrations_locally.sh` — applies every migration and runs every suite against a throwaway local database; `check_teacher_invite_race.sh` — two real connections racing for one invitation code; `check_event_digest.mjs` — the digest sender with the network stubbed |
+| `scripts/dev/` | `verify_migrations_locally.sh` — applies every migration and runs every suite against a throwaway local database; `check_teacher_invite_race.sh` — two real connections racing for one invitation code; `check_event_digest.mjs`, `check_event_reminders.mjs` and `check_makeup_emails.mjs` — the mail senders with the network stubbed |
 | `docs/` | This file, the platform plan, [`AUTH_MIGRATION.md`](AUTH_MIGRATION.md), [`TEACHER_VERIFICATION.md`](TEACHER_VERIFICATION.md), [`EMAIL_SETUP.md`](EMAIL_SETUP.md), [`BRAND_ASSETS.md`](BRAND_ASSETS.md), [`SECURITY_HEADERS.md`](SECURITY_HEADERS.md) |
 | `reference/RHS-BAND/` | Read-only clone of the old app, for conventions only |
 | `.tools/pgsql/bin` | Portable PostgreSQL 18 client used by the migration scripts (gitignored) |
@@ -448,7 +448,10 @@ and it is worth running after any change to the digest.
 The database half is a normal suite: `bash scripts/dev/verify_migrations_locally.sh`
 runs `supabase/tests/event_digest_emails.sql`, which pins down who is owed an
 email, the window, the once-per-day key, and that only the caller's own
-preference is writable.
+preference is writable. The 48-hour reminder and make-up rules live in
+`supabase/tests/event_emails.sql`, and their senders have the same local
+harnesses: `scripts/dev/check_event_reminders.mjs` and
+`scripts/dev/check_makeup_emails.mjs`.
 
 ## 6. How the frontend is put together
 
@@ -562,5 +565,12 @@ Rules the code follows, and that changes should keep:
   until the shared Resend quota is settled, because one run can mail up to 500
   people and the free tier allows 100 a day (auth mail included).
   `docs/EMAIL_SETUP.md` §6a explains what the digest does and who it skips.
+- **Migration 036 adds the 48-hour reminder and the staff make-up email.**
+  Applying it alone changes no mail behavior: reminders wait for the
+  `event-reminders` function **and** its Supabase Cron job, and make-up email
+  needs the `send-makeup-emails` function. Both are documented (secrets, dry
+  run, cron statement) in `docs/EMAIL_SETUP.md` §6b–6c and
+  `scripts/migrate/04_functions_config.md` §1–2. A frontend that shows the
+  make-up button must be deployed **after** 036 is applied.
 - `docs/CUTOVER.md` and `scripts/migrate/run_all.sh` (Phase 4).
 - The new Vercel project for this frontend.
