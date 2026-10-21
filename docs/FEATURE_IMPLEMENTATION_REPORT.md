@@ -280,16 +280,22 @@ domain). Verified on the deployed origin: the entry bundle now lazy-loads
 `vercel.json` are still served, and `/absences` renders the sign-in gate with a
 clean console.
 
-**The push itself did not deploy it.** Vercel created a deployment for
-`5fbf8a4` and blocked it one second later with "the commit author doesn't have
-permission to create deployments for this project": the commits are authored by
-`1061369@lwsd.org`, which is not a member of the `mandalora` Vercel team that
-owns the project. The live build was therefore pushed with the authenticated
-CLI (`vercel --prod --archive=tgz`, the tarball upload being required because
-the plain upload exceeds Vercel's 15,000-file limit). Until that address is
-added to the Vercel account/team, or the local `user.email` is pointed at one
-that is already a member, **git-triggered production deploys will keep being
-blocked** and each release needs a CLI deploy.
+**The first push did not deploy it, the next one did.** Vercel created a
+deployment for `5fbf8a4` and blocked it one second later with "the commit author
+doesn't have permission to create deployments for this project": the commits are
+authored by `1061369@lwsd.org`, which at that moment was not recognised as a
+member of the `mandalora` Vercel team that owns the project. The live build was
+therefore pushed with the authenticated CLI (`vercel --prod --archive=tgz`).
+Once that author permission was granted, the following push (`5a9b405`) deployed
+through Git as normal — GitHub's deployment record for it reports
+`success / Deployment has completed` — so releases no longer need a manual CLI
+deploy.
+
+The CLI also revealed a second problem worth keeping fixed:
+[.vercelignore](.vercelignore) now excludes `node_modules`, `dist`, `.tools`
+(local Postgres binaries), test output and the test/ops directories. Without it
+the upload was ~345 MB and a deploy failed mid-stream ("fetch failed"); with it
+the upload is small and builds finish in seconds.
 
 ### 6c. Remaining steps (not performed)
 
