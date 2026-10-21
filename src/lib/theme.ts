@@ -13,8 +13,6 @@ const TOKEN_TO_CSS_VAR: Record<string, string> = {
   ink: "--band-ink",
 };
 
-const CSS_VARS = Object.values(TOKEN_TO_CSS_VAR);
-
 /** Paint the app with a program's tokens (unknown keys are ignored). */
 export function applyThemeTokens(tokens?: Record<string, string> | null): void {
   const root = document.documentElement;
@@ -27,10 +25,4 @@ export function applyThemeTokens(tokens?: Record<string, string> | null): void {
   document
     .querySelector('meta[name="theme-color"]')
     ?.setAttribute("content", themeColor ?? "#2d5a1b");
-}
-
-export function resetThemeTokens(): void {
-  const root = document.documentElement;
-  for (const cssVar of CSS_VARS) root.style.removeProperty(cssVar);
-  applyThemeTokens(null);
 }

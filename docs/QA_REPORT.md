@@ -640,26 +640,32 @@ which no longer reports the lint). Details and the safety argument are in
 
 ---
 
-## Appendix — shots
+## Appendix — shots`docs/qa-shots/` holds exactly the 20 frames this report cites — every image
+link in the sections above resolves to a file here:
 
-`docs/qa-shots/` holds 211 screenshots:
+- 8 `before-*` / 8 `after-*` — the welcome page at 320/390/768/1440 (light and
+  dark) plus the sign-in, sign-up and terms pairs at the width each defect was
+  reported at. These are the pairs behind QA-01, QA-02, QA-03, QA-04, QA-06 and
+  QA-05's landing-page evidence.
+- 1 signed-in frame, `after-home-390-light-in.png` — the landing-page buttons in
+  the signed-in state.
+- 3 owner-reported frames — `reported-landing-page.png`, `reported-toggle-label.png`,
+  `reported-add-event-sheet.png`.
 
-- 86 `before-*` — the pre-fix public pages: 6 routes × 7 widths × 2 themes, plus
-  landscape phone (844×390).
-- 122 `after-*` — the same 86, plus 34 signed-in screens named `…-in.png`.
-- 3 `crop-*` — the crops used while isolating the note overlay.
-- `reported-landing-page.png` — the owner's screenshot that reported the stray
-text and the uneven hero pair. It shows both at once, which is why it is kept.
+The audit originally captured 256 frames: 6 public routes × 7 widths × 2 themes,
+landscape phone (844×390), 3 overlay crops, and a signed-in pass that was stopped
+part-way through (34 of 88, so its pictures were never a complete set). On
+2026-10-21 the 236 frames that no claim here cites were removed, because nothing
+could check them and a picture without a claim is only weight. The measurements
+behind every remaining number were never in the pictures: they are in
+`.tools/qa/out/audit-final2.json` (174 signed-in records) and
+`audit-private.json`, and the geometry claims are re-derived from the live DOM by
+`npx playwright test e2e/qa-guard.spec.ts` — the guard probe is the durable
+record, the frames are illustrations.
 
-**The signed-in `after-*` set is incomplete: 34 of 88.** The final signed-in pass
-was stopped part-way through, so its *measurements* are complete (174 records in
-`.tools/qa/out/audit-final2.json`) while its pictures are not. The signed-in
-screens also have no `before-*` pictures at all — the before-state measurements
-taken on them are in `.tools/qa/out/audit-private.json`.
+Re-running an audit regenerates the full set; nothing in the repository depends
+on a frame that is not linked above.
 
-Every public route × width × theme combination has a matched before/after pair,
-so any claim in this report about the public pages can be checked against the
-picture of the same moment.
 
 **One caveat on the landing-page `after-*` pictures.** They were captured before
 two late fixes — removing a block comment that rendered as literal text inside

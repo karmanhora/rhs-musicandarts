@@ -246,10 +246,6 @@ export const setJoinCode = (programId: string, code: string) =>
 export const removeMember = (programId: string, memberId: string) =>
   callRpc("remove_member", { p_ensemble: programId, p_member_id: memberId });
 
-/** Director-only: pause a membership without deleting it (keeps attendance). */
-export const deactivateMember = (programId: string, memberId: string) =>
-  callRpc("deactivate_member", { p_ensemble: programId, p_member_id: memberId });
-
 /** Director-only. */
 export const reactivateMember = (programId: string, memberId: string) =>
   callRpc("reactivate_member", { p_ensemble: programId, p_member_id: memberId });
@@ -282,33 +278,6 @@ export const recordAttendance = (token: string) =>
 /** Student: check in with the 8-character code shown on screen. */
 export const recordAttendanceByCode = (code: string) =>
   callRpc("record_attendance_by_code", { p_code: code });
-
-/**
- * Staff: set a student's attendance for an event. `status` may be the legacy
- * boolean or "present" | "absent" | "excused" | "late".
- */
-export const overrideAttendance = (
-  eventId: string,
-  studentId: string,
-  status: string | boolean,
-  excuseReason?: string,
-  staffNote?: string
-) => {
-  if (typeof status === "boolean") {
-    return callRpc("override_attendance", {
-      p_event_id: eventId,
-      p_student_id: studentId,
-      p_attended: status,
-    });
-  }
-  return callRpc("override_attendance", {
-    p_event_id: eventId,
-    p_student_id: studentId,
-    p_status: status,
-    p_excuse_reason: excuseReason ?? "",
-    p_staff_note: staffNote ?? "",
-  });
-};
 
 // --- Teacher access (any signed-in account, for itself) ----------------------
 
