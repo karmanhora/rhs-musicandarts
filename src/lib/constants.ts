@@ -1,4 +1,6 @@
 import type {
+  AbsenceStatus,
+  AttendanceAuditEntry,
   AttendanceRequirement,
   AttendanceStatus,
   CheckinMode,
@@ -129,6 +131,43 @@ export const ATTENDANCE_STATUS_CHIP: Record<AttendanceStatus, string> = {
   late: "bg-[var(--cue-late-bg)] text-[var(--cue-late)]",
   excused: "bg-[var(--cue-excused-bg)] text-[var(--cue-excused)]",
   absent: "bg-[var(--cue-absent-bg)] text-[var(--cue-absent)]",
+};
+
+export const ABSENCE_STATUS_LABEL: Record<AbsenceStatus, string> = {
+  pending: "Pending",
+  approved: "Approved",
+  denied: "Denied",
+  withdrawn: "Withdrawn",
+};
+
+/**
+ * Pending borrows the attention colour, approved the present green, denied the
+ * absent red, withdrawn the neutral raised surface. Every chip is paired with
+ * its word, never colour alone.
+ */
+export const ABSENCE_STATUS_CHIP: Record<AbsenceStatus, string> = {
+  pending: "bg-[var(--cue-late-bg)] text-[var(--cue-late)]",
+  approved: "bg-[var(--cue-present-bg)] text-[var(--cue-present)]",
+  denied: "bg-[var(--cue-absent-bg)] text-[var(--cue-absent)]",
+  withdrawn: "bg-[var(--cue-raised)] text-[var(--cue-muted)]",
+};
+
+/** Why an attendance change happened, said in a person's words. */
+export const HISTORY_SOURCE_LABEL: Record<AttendanceAuditEntry["source"], string> = {
+  manual: "Staff correction",
+  bulk: "Bulk action",
+  check_in: "Student check-in",
+  absence_request: "Absence decision",
+  system: "Automatic",
+};
+
+/** A status filter value, including "none" for "no record". */
+export const HISTORY_STATUS_LABEL: Record<AttendanceStatus | "none", string> = {
+  present: "Present",
+  late: "Late",
+  excused: "Excused",
+  absent: "Absent (stored)",
+  none: "No record",
 };
 
 export const ROLE_LABEL: Record<Role, string> = {

@@ -45,6 +45,12 @@ const AccountSettingsScreen = lazy(() =>
 const RolesScreen = lazy(() =>
   import("./screens/RolesScreen").then((module) => ({ default: module.RolesScreen }))
 );
+const AbsenceScreen = lazy(() =>
+  import("./screens/AbsenceScreen").then((module) => ({ default: module.AbsenceScreen }))
+);
+const RecordsScreen = lazy(() =>
+  import("./screens/RecordsScreen").then((module) => ({ default: module.RecordsScreen }))
+);
 const TeacherVerifyScreen = lazy(() =>
   import("./screens/TeacherVerifyScreen").then((module) => ({
     default: module.TeacherVerifyScreen,
@@ -104,6 +110,26 @@ function PermissionGate({
 }) {
   const app = usePrograms();
   return app.can(permission) ? <>{children}</> : <Navigate to="/" replace />;
+}
+
+/**
+ * "Any one of these" capability gate. A screen with two audiences — a student
+ * asking for an absence, a reviewer answering one — must open for either, while
+ * the screen itself still decides which half to render.
+ */
+function AnyPermissionGate({
+  anyOf,
+  children,
+}: {
+  anyOf: PermissionCode[];
+  children: ReactNode;
+}) {
+  const app = usePrograms();
+  return anyOf.some((permission) => app.can(permission)) ? (
+    <>{children}</>
+  ) : (
+    <Navigate to="/" replace />
+  );
 }
 
 /** Everything that requires a resolved program membership. */
@@ -197,6 +223,28 @@ function ProgramRoutes() {
             <PermissionGate permission="attendance.view_analytics">
               <AnalyticsScreen />
             </PermissionGate>
+          }
+        />
+        <Route
+          path="/absences"
+          element={
+            <AnyPermissionGate anyOf={["absence.request_self", "absence.review"]}>
+              <AbsenceScreen />
+            </AnyPermissionGate>
+          }
+        />
+        <Route
+          path="/records"
+          element={
+            <AnyPermissionGate
+              anyOf={[
+                "attendance.view_program",
+                "attendance.view_section",
+                "attendance.export_reports",
+              ]}
+            >
+              <RecordsScreen />
+            </AnyPermissionGate>
           }
         />
         <Route path="/settings" element={<AccountSettingsScreen />} />

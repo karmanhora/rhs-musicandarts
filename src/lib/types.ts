@@ -250,7 +250,14 @@ export interface PersonalEventRow {
   created_at: string;
 }
 
-export type NotificationType = "new_event" | "checkin_open" | "chat_message";
+export type NotificationType =
+  | "new_event"
+  | "checkin_open"
+  | "absence_request"
+  | "absence_decision"
+  | "event_changed"
+  | "event_cancelled"
+  | "workflow_failed";
 
 /**
  * The caller's own teacher-credential state (migration 035), as the screens read
@@ -273,9 +280,128 @@ export interface NotificationRow {
   type: NotificationType;
   title: string;
   body: string;
-  payload: { event_id?: string; event_name?: string } | null;
+  payload: {
+    event_id?: string;
+    event_name?: string;
+    request_id?: string;
+  } | null;
   read: boolean;
   created_at: string;
+  /** Idempotency key; null for one-off rows. */
+  dedupe_key?: string | null;
+}
+
+/** Pending / Approved / Denied / Withdrawn — the whole vocabulary (migration 20261020113000). */
+export type AbsenceStatus = "pending" | "approved" | "denied" | "withdrawn";
+
+/** One request as its own student sees it. */
+export interface MyAbsenceRequestRow {
+  id: string;
+  event_id: string;
+  event_name: string;
+  event_date: string;
+  attendance_requirement: AttendanceRequirement;
+  reason: string;
+  status: AbsenceStatus;
+  decision_note: string;
+  decided_at: string | null;
+  decided_by_name: string | null;
+  /** True once a reviewer has reopened the event for a new ask. */
+  resubmission_allowed: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+/** One request in the reviewer's queue, with the student and section. */
+export interface AbsenceRequestRow {
+  id: string;
+  event_id: string;
+  event_name: string;
+  event_date: string;
+  attendance_requirement: AttendanceRequirement;
+  student_id: string;
+  student_name: string;
+  section_id: string | null;
+  section: string;
+  reason: string;
+  status: AbsenceStatus;
+  decision_note: string;
+  decided_at: string | null;
+  decided_by_name: string | null;
+  resubmission_allowed: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+/**
+ * One attendance change. `old_status` / `new_status` are null to mean "no
+ * record": an absent mark deletes the row, so the audit never claims a stored
+ * "absent" that the schema does not keep.
+ */
+export interface AttendanceAuditEntry {
+  id: number;
+  created_at: string;
+  action: "marked" | "changed" | "cleared";
+  old_status: AttendanceStatus | null;
+  new_status: AttendanceStatus | null;
+  old_late: boolean | null;
+  new_late: boolean | null;
+  source: "manual" | "bulk" | "check_in" | "absence_request" | "system";
+  reason: string;
+  attendance_record_id: string | null;
+  event_id: string;
+  event_name: string;
+  event_date: string;
+  student_id: string;
+  student_name: string;
+  section: string;
+  actor_id: string | null;
+  actor_name: string | null;
+}
+
+/** One row of `attendance_report_rows()`. No address, auth id or excuse text. */
+export interface AttendanceReportRow {
+  event_id: string;
+  event_name: string;
+  event_date: string;
+  event_end_date: string | null;
+  all_day: boolean;
+  event_type: string;
+  attendance_requirement: AttendanceRequirement;
+  student_id: string;
+  student_name: string;
+  student_ref: string;
+  section_id: string | null;
+  section: string;
+  status: AttendanceStatus | "not_recorded";
+  checked_in_at: string | null;
+  late: boolean;
+}
+
+export interface AttendanceReportResult {
+  ok: boolean;
+  message?: string;
+  rows?: AttendanceReportRow[];
+  total?: number;
+  returned?: number;
+  truncated?: boolean;
+  limit?: number;
+}
+
+/** `get_event_requirement_stats()` — required average vs optional turnout. */
+export interface EventRequirementStats {
+  ok: boolean;
+  message?: string;
+  students?: number;
+  measured_students?: number;
+  required_events?: number;
+  required_average_pct?: number | null;
+  optional_events?: number;
+  optional_marks?: number;
+  optional_attended?: number;
+  optional_turnout_pct?: number | null;
+  excluded_events?: number;
+  basis?: string;
 }
 
 /**
@@ -307,8 +433,6 @@ export interface RpcResult {
   permissions?: string[];
   /** `list_program_roles()`: every role available in the program. */
   roles?: RoleDefinition[];
-  /** `list_role_audit()`: recent role/permission changes, newest first. */
-  entries?: RoleAuditEntry[];
   /** `create_custom_role()` / `update_custom_role()`: the role that was written. */
   role_id?: string;
   /** `update_custom_role()`: capability widening needs an explicit acknowledgement. */
@@ -351,6 +475,35 @@ export interface RpcResult {
   reachable?: number;
   /** `digest_reachability()`: every active member and why they are (not) reached. */
   people?: DigestReachabilityRow[];
+
+  /** `create_absence_request()`: the row that was written. */
+  request_id?: string;
+  /** `mark_all_notifications_read()`: how many rows were marked. */
+  updated?: number;
+  /** `mark_attendance_bulk()`: how many marks saved and how many were refused. */
+  failed?: number;
+  /** `list_attendance_history()`: the clamped page size. */
+  limit?: number;
+  /** `attendance_report_rows()`: the report payload. */
+  rows?: AttendanceReportRow[];
+  returned?: number;
+  truncated?: boolean;
+
+  /** `get_event_requirement_stats()`: the required/optional breakdown. */
+  students?: number;
+  measured_students?: number;
+  required_events?: number;
+  required_average_pct?: number | null;
+  optional_events?: number;
+  optional_marks?: number;
+  optional_attended?: number;
+  optional_turnout_pct?: number | null;
+  excluded_events?: number;
+  basis?: string;
+  /** `get_event_attendance_summary()`: roster members with no record at all. */
+  unrecorded?: number;
+  attendance_requirement?: AttendanceRequirement;
+  checkin_mode?: CheckinMode;
 
   /**
    * `teacher_access_status()`: whether this account holds a redeemed teacher

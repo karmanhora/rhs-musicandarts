@@ -36,7 +36,7 @@ import {
 } from "../components/ui";
 import { MakeupEmailPanel } from "../components/MakeupEmailComposer";
 import { fetchAttendance, fetchEvents, fetchRoster, fetchStaffNotes } from "../lib/queries";
-import { overrideAttendance } from "../lib/rpc";
+import { markAttendanceBulk, overrideAttendanceWithReason } from "../lib/rpc";
 import type { AttendanceRow, AttendanceStatus, EventRow, RosterMember } from "../lib/types";
 import { usePrograms } from "../hooks/usePrograms";
 import {
@@ -54,8 +54,9 @@ import { endOfDay, fmtTime, relativeDay, startOfDay } from "../lib/date";
  * single work surface rather than a column of cards: the figures, the filters
  * and the names all describe the same event, so they share one panel. Passing
  * the existing staff note back through every status change matters:
- * `override_attendance` replaces the note wholesale, and saving a status with an
- * empty note would silently erase it.
+ * `override_attendance_with_reason` replaces the note wholesale, and saving a
+ * status with an empty note would silently erase it. The optional reason rides
+ * along into the change history (migration 20261020112000).
  */
 
 const STATUS_OPTIONS: { value: AttendanceStatus; label: string }[] = [
@@ -95,6 +96,7 @@ export function AttendanceScreen() {
   const [draftStatus, setDraftStatus] = useState<AttendanceStatus>("present");
   const [draftExcuse, setDraftExcuse] = useState("");
   const [draftNote, setDraftNote] = useState("");
+  const [draftReason, setDraftReason] = useState("");
   const [saving, setSaving] = useState(false);
   const [busyStudent, setBusyStudent] = useState<string | null>(null);
   const [bulkOpen, setBulkOpen] = useState(false);
@@ -240,15 +242,17 @@ export function AttendanceScreen() {
     studentId: string,
     status: AttendanceStatus,
     excuse = "",
-    note = ""
+    note = "",
+    reason = ""
   ): Promise<boolean> {
     if (!selected) return false;
-    const { result, error: rpcError } = await overrideAttendance(
+    const { result, error: rpcError } = await overrideAttendanceWithReason(
       selected.id,
       studentId,
       status,
       excuse,
-      note
+      note,
+      reason
     );
     if (rpcError || !result?.ok) {
       toast.error(rpcError?.message || result?.message || "Could not save that mark.");
@@ -271,6 +275,7 @@ export function AttendanceScreen() {
     setDraftStatus(row?.status ?? "present");
     setDraftExcuse(row?.excuse_reason ?? "");
     setDraftNote(row ? (notes.get(row.id) ?? "") : "");
+    setDraftReason("");
   }
 
   async function saveEditor() {
@@ -280,7 +285,8 @@ export function AttendanceScreen() {
       editing.user_id,
       draftStatus,
       draftStatus === "excused" ? draftExcuse : "",
-      draftNote
+      draftNote,
+      draftReason
     );
     setSaving(false);
     if (!ok) return;
@@ -289,23 +295,40 @@ export function AttendanceScreen() {
     await loadAttendance();
   }
 
+  /**
+   * One request for the whole bulk action. Previously the roll sent a mark per
+   * student, so the change history could not tell a bulk save from forty
+   * separate corrections; the server records every entry with source = bulk.
+   */
   async function markAllRemaining() {
     if (!selected) return;
     const remaining = students.filter((s) => !byStudent.has(s.user_id));
-    setBulking(true);
-    let failed = 0;
-    for (const student of remaining) {
-      const ok = await mark(student.user_id, "present");
-      if (!ok) failed += 1;
+    if (remaining.length === 0) {
+      setBulkOpen(false);
+      return;
     }
+    setBulking(true);
+    const { result, error: rpcError } = await markAttendanceBulk(
+      selected.id,
+      remaining.map((s) => s.user_id),
+      "present",
+      "Marked the remaining students present"
+    );
     setBulking(false);
     setBulkOpen(false);
     await loadAttendance();
-    if (failed > 0) {
-      toast.warn(`Marked ${remaining.length - failed} present — ${failed} wouldn't save.`);
-    } else {
-      toast.success(`Marked ${remaining.length} present.`);
+    if (rpcError || !result?.ok) {
+      const updated = result?.updated ?? 0;
+      toast.error(
+        rpcError?.message ||
+          result?.message ||
+          (updated > 0
+            ? `Marked ${updated}, but ${result?.failed ?? "some"} would not save.`
+            : "Could not mark everyone present.")
+      );
+      return;
     }
+    toast.success(`Marked ${remaining.length} present.`);
   }
 
   if (!programId) {
@@ -639,8 +662,9 @@ export function AttendanceScreen() {
             </div>
 
             <p className="type-meta mt-2 px-1">
-              A student left unmarked counts as absent for the event. Tap anyone to mark them late,
-              excused or absent, or to leave a staff note.
+              A student left unmarked has no record for this event — a report says “not recorded”,
+              which is not the same claim as absent. Tap anyone to mark them late, excused or absent,
+              or to leave a staff note.
             </p>
           </section>
 
@@ -759,8 +783,21 @@ export function AttendanceScreen() {
               />
             </Field>
 
+            <Field
+              label="Why is this changing?"
+              hint="Optional. Kept on the change history so the correction can be explained later — never shown to students."
+            >
+              <Input
+                value={draftReason}
+                onChange={(e) => setDraftReason(e.target.value)}
+                maxLength={500}
+                placeholder="Spoke to them after rehearsal"
+              />
+            </Field>
+
             <p className="type-meta">
-              Choosing Absent removes any mark for this event, so the event counts as a miss.
+              Choosing Absent removes any mark for this event, so the event counts as a miss. Only a
+              real change is recorded, and nothing is recorded if the save fails.
             </p>
           </div>
         ) : null}

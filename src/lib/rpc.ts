@@ -2,10 +2,16 @@ import type { PostgrestError } from "@supabase/supabase-js";
 import type { AuthAudience } from "./constants";
 import { supabase } from "./supabase";
 import type {
+  AbsenceRequestRow,
+  AttendanceAuditEntry,
+  AttendanceReportResult,
+  AttendanceStatus,
   MakeupEmailContext,
   MakeupEmailSendResponse,
+  MyAbsenceRequestRow,
   MyAttendanceRow,
   ProgramOption,
+  RoleAuditEntry,
   RpcResult,
   SectionStatRow,
   TeacherAccessStatus,
@@ -435,9 +441,22 @@ export const updateCustomRole = (
 export const deleteCustomRole = (roleId: string) =>
   callRpc("delete_custom_role", { p_role: roleId });
 
+/** `list_role_audit()` answers `{ ok, entries }`; the entries are typed here. */
+export interface RoleAuditResult extends RpcResult {
+  entries?: RoleAuditEntry[];
+}
+
 /** Recent role/permission changes in one program. */
-export const listRoleAudit = (programId: string, limit = 40) =>
-  callRpc("list_role_audit", { p_ensemble: programId, p_limit: limit });
+export async function listRoleAudit(
+  programId: string,
+  limit = 40
+): Promise<{ result: RoleAuditResult | null; error: PostgrestError | null }> {
+  const { data, error } = await supabase.rpc("list_role_audit", {
+    p_ensemble: programId,
+    p_limit: limit,
+  });
+  return { result: (data ?? null) as RoleAuditResult | null, error };
+}
 
 // --- Analytics (director of that program, or a program admin) ---------------
 
@@ -459,6 +478,182 @@ export const getEventAttendanceSummary = (eventId: string) =>
 /** Last N required events that have already happened, newest first. */
 export const getAttendanceTrend = (programId: string, limit = 10) =>
   callRpcList<TrendRow>("get_attendance_trend", { p_ensemble: programId, p_limit: limit });
+
+// --- Event requirements (20261020111000) -----------------------------------
+
+/**
+ * Required attendance average, optional-event turnout and the count of
+ * no-attendance events, with the calculation rules in `basis`. Directors only.
+ */
+export const getEventRequirementStats = (programId: string) =>
+  callRpc("get_event_requirement_stats", { p_ensemble: programId });
+
+// --- Attendance history (20261020112000) -----------------------------------
+
+/**
+ * Recent attendance changes. Program-wide readers see the whole program; a
+ * section leader sees only their section. A student is refused, and has no
+ * direct-table path either.
+ */
+/** `list_attendance_history()` answers `{ ok, entries, limit }`, not a bare list. */
+export interface AttendanceHistoryResult extends RpcResult {
+  entries?: AttendanceAuditEntry[];
+}
+
+export async function listAttendanceHistory(
+  programId: string,
+  filters: {
+    event?: string | null;
+    student?: string | null;
+    from?: string | null;
+    to?: string | null;
+    oldStatus?: string | null;
+    newStatus?: string | null;
+    actor?: string | null;
+    limit?: number;
+  } = {}
+): Promise<{ result: AttendanceHistoryResult | null; error: PostgrestError | null }> {
+  const { data, error } = await supabase.rpc("list_attendance_history", {
+    p_ensemble: programId,
+    p_event: filters.event ?? null,
+    p_student: filters.student ?? null,
+    p_from: filters.from ?? null,
+    p_to: filters.to ?? null,
+    p_old_status: filters.oldStatus ?? null,
+    p_new_status: filters.newStatus ?? null,
+    p_actor: filters.actor ?? null,
+    p_limit: filters.limit ?? 100,
+  });
+  return { result: (data ?? null) as AttendanceHistoryResult | null, error };
+}
+
+/**
+ * One staff mark with an optional short reason, recorded on the audit entry.
+ * Every permission and section rule is inherited from `override_attendance`.
+ */
+export const overrideAttendanceWithReason = (
+  eventId: string,
+  studentId: string,
+  status: AttendanceStatus,
+  excuseReason: string,
+  staffNote: string,
+  reason: string
+) =>
+  callRpc("override_attendance_with_reason", {
+    p_event_id: eventId,
+    p_student_id: studentId,
+    p_status: status,
+    p_excuse_reason: excuseReason,
+    p_staff_note: staffNote,
+    p_reason: reason,
+  });
+
+/**
+ * Many students in one action. Each still passes the caller's own capability
+ * and section checks; the answer says how many saved and how many were refused.
+ */
+export const markAttendanceBulk = (
+  eventId: string,
+  studentIds: string[],
+  status: AttendanceStatus,
+  reason = ""
+) =>
+  callRpc("mark_attendance_bulk", {
+    p_event_id: eventId,
+    p_student_ids: studentIds,
+    p_status: status,
+    p_reason: reason,
+  });
+
+// --- Absence requests (20261020113000) --------------------------------------
+
+/** Student: ask to miss one future event. Duplicates are refused by the server. */
+export const createAbsenceRequest = (eventId: string, reason: string) =>
+  callRpc("create_absence_request", { p_event_id: eventId, p_reason: reason });
+
+/** Student: withdraw one of my own pending requests. */
+export const withdrawAbsenceRequest = (requestId: string) =>
+  callRpc("withdraw_absence_request", { p_request_id: requestId });
+
+/** The caller's own requests in one program, newest first. */
+export const listMyAbsenceRequests = (programId: string, limit = 25) =>
+  callRpcList<MyAbsenceRequestRow>("list_my_absence_requests", {
+    p_ensemble: programId,
+    p_limit: limit,
+  });
+
+/** Reviewer queue, with server-side filters. Requires `absence.review`. */
+export const listAbsenceRequests = (
+  programId: string,
+  filters: {
+    status?: string;
+    event?: string | null;
+    section?: string | null;
+    student?: string | null;
+    limit?: number;
+  } = {}
+) =>
+  callRpcList<AbsenceRequestRow>("list_absence_requests", {
+    p_ensemble: programId,
+    p_status: filters.status ?? "pending",
+    p_event: filters.event ?? null,
+    p_section: filters.section ?? null,
+    p_student: filters.student ?? null,
+    p_limit: filters.limit ?? 200,
+  });
+
+/** Reviewer: approve or deny one pending request, with an optional response. */
+export const decideAbsenceRequest = (
+  requestId: string,
+  decision: "approved" | "denied",
+  note = ""
+) =>
+  callRpc("decide_absence_request", {
+    p_request_id: requestId,
+    p_decision: decision,
+    p_note: note,
+  });
+
+/** Reviewer: let a student ask again after a decision. */
+export const allowAbsenceResubmission = (requestId: string) =>
+  callRpc("allow_absence_resubmission", { p_request_id: requestId });
+
+// --- Attendance reports (20261020114000) ------------------------------------
+
+/**
+ * Permission-checked report rows. `p_from` is inclusive and `p_to` exclusive, so
+ * a day range should be [start of first day, start of day after the last].
+ */
+export async function getAttendanceReport(params: {
+  programId: string;
+  event?: string | null;
+  from?: string | null;
+  to?: string | null;
+  student?: string | null;
+  section?: string | null;
+  status?: string | null;
+  requirement?: string | null;
+  limit?: number;
+}): Promise<{ report: AttendanceReportResult | null; error: string | null }> {
+  const { data, error } = await supabase.rpc("attendance_report_rows", {
+    p_ensemble: params.programId,
+    p_event: params.event ?? null,
+    p_from: params.from ?? null,
+    p_to: params.to ?? null,
+    p_student: params.student ?? null,
+    p_section: params.section ?? null,
+    p_status: params.status ?? null,
+    p_requirement: params.requirement ?? null,
+    p_limit: params.limit ?? 5000,
+  });
+  if (error) return { report: null, error: error.message };
+  return { report: (data ?? null) as AttendanceReportResult | null, error: null };
+}
+
+// --- Notification centre (20261020110000) ----------------------------------
+
+/** Mark every one of the caller's own unread notifications read. */
+export const markAllNotificationsRead = () => callRpc("mark_all_notifications_read");
 
 // --- Email (any signed-in member, for themselves) ---------------------------
 

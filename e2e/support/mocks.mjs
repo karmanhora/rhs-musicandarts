@@ -199,6 +199,11 @@ const attendanceRows = rosterRows.map((r, i) => ({
   created_at: "2026-10-12T15:31:00.000Z",
 }));
 
+/**
+ * The capability codes migration 029 seeds, held by the director persona. The
+ * older `attendance.view`-style names are kept beside them: existing specs use
+ * them for screens that have not been migrated to the 029 vocabulary yet.
+ */
 const permissions = [
   "attendance.view",
   "attendance.record",
@@ -213,6 +218,23 @@ const permissions = [
   "events.manage",
   "program.manage_settings",
   "profile.manage_users",
+  "profile.view_self",
+  "profile.edit_self",
+  "roster.view_program",
+  "attendance.view_self",
+  "attendance.view_section",
+  "attendance.view_program",
+  "attendance.mark_section",
+  "attendance.mark_present",
+  "attendance.edit_records",
+  "attendance.manage_checkin_sessions",
+  "attendance.manage_roster",
+  "attendance.view_staff_notes",
+  "attendance.export_reports",
+  "absence.request_self",
+  "absence.review",
+  "events.view_program",
+  "calendar.view_sources",
 ];
 
 /** PostgREST answers: table name → rows. Unknown tables answer `[]`. */
@@ -300,6 +322,182 @@ const RPC_RESULTS = {
   list_active_programs: [
     { slug: "band", name: "RHS Mustang Band", color: "#17402b", has_code: true },
     { slug: "orchestra", name: "RHS Chamber Orchestra", color: "#3d5a78", has_code: false },
+  ],
+
+  /**
+   * Feature 4: the required/optional split. `required_average_pct` is null when
+   * nobody has a mark, which the screen must render as an em dash, never zero.
+   */
+  get_event_requirement_stats: {
+    ok: true,
+    students: 6,
+    measured_students: 5,
+    required_events: 7,
+    required_average_pct: 92,
+    optional_events: 2,
+    optional_marks: 8,
+    optional_attended: 5,
+    optional_turnout_pct: 63,
+    excluded_events: 1,
+    basis:
+      "Required average counts present and late marks on events marked Required, per student. Optional events never reduce it, and an event with no attendance is excluded from both.",
+  },
+
+  /** Feature 2: one change, one cleared mark, one bulk correction. */
+  list_attendance_history: {
+    ok: true,
+    limit: 200,
+    entries: [
+      {
+        id: 3,
+        created_at: "2026-10-12T17:05:00.000Z",
+        action: "changed",
+        old_status: "absent",
+        new_status: "excused",
+        old_late: false,
+        new_late: false,
+        source: "manual",
+        reason: "Doctor's note handed in after rehearsal",
+        attendance_record_id: "ccccccc1-cccc-4ccc-8ccc-ccccccccccc1",
+        event_id: "88888888-8888-4888-8888-888888888888",
+        event_name: "Marching rehearsal — homecoming set",
+        event_date: "2026-10-12T15:30:00.000Z",
+        student_id: "bbbbbbb1-bbbb-4bbb-8bbb-bbbbbbbbbbb1",
+        student_name: "Marcus Ellery",
+        section: "Brass",
+        actor_id: profile.id,
+        actor_name: profile.display_name,
+      },
+      {
+        id: 2,
+        created_at: "2026-10-12T15:40:00.000Z",
+        action: "cleared",
+        old_status: "present",
+        new_status: null,
+        old_late: false,
+        new_late: null,
+        source: "check_in",
+        reason: "",
+        attendance_record_id: null,
+        event_id: "88888888-8888-4888-8888-888888888888",
+        event_name: "Marching rehearsal — homecoming set",
+        event_date: "2026-10-12T15:30:00.000Z",
+        student_id: "bbbbbbb2-bbbb-4bbb-8bbb-bbbbbbbbbbb1",
+        student_name: "Priya Raghunathan-Villanueva",
+        section: "Woodwinds",
+        actor_id: null,
+        actor_name: null,
+      },
+      {
+        id: 1,
+        created_at: "2026-10-12T15:31:00.000Z",
+        action: "marked",
+        old_status: null,
+        new_status: "present",
+        old_late: null,
+        new_late: false,
+        source: "bulk",
+        reason: "Marked the remaining students present",
+        attendance_record_id: "ccccccc0-cccc-4ccc-8ccc-ccccccccccc1",
+        event_id: "88888888-8888-4888-8888-888888888888",
+        event_name: "Marching rehearsal — homecoming set",
+        event_date: "2026-10-12T15:30:00.000Z",
+        student_id: profile.id,
+        student_name: profile.display_name,
+        section: "Woodwinds",
+        actor_id: profile.id,
+        actor_name: profile.display_name,
+      },
+    ],
+  },
+
+  /**
+   * Feature 3: deliberately hostile values — a comma and quote in a name, and a
+   * formula in an event title — so a spec can assert the CSV escaping.
+   */
+  attendance_report_rows: {
+    ok: true,
+    total: 2,
+    returned: 2,
+    truncated: false,
+    rows: [
+      {
+        event_id: "88888888-8888-4888-8888-888888888888",
+        event_name: '=HYPERLINK("http://example.test")',
+        event_date: "2026-10-12T15:30:00.000Z",
+        event_end_date: "2026-10-12T17:30:00.000Z",
+        all_day: false,
+        event_type: "rehearsal",
+        attendance_requirement: "required",
+        student_id: "bbbbbbb1-bbbb-4bbb-8bbb-bbbbbbbbbbb1",
+        student_name: 'Vance, Ada "Addie"',
+        student_ref: "RHS-0001",
+        section_id: SECTION_BRASS,
+        section: "Brass",
+        status: "present",
+        checked_in_at: "2026-10-12T15:31:00.000Z",
+        late: false,
+      },
+      {
+        event_id: "99999999-9999-4999-8999-999999999999",
+        event_name: "Friday night football vs. Bellevue",
+        event_date: "2026-10-09T19:00:00.000Z",
+        event_end_date: "2026-10-09T22:00:00.000Z",
+        all_day: false,
+        event_type: "performance",
+        attendance_requirement: "optional",
+        student_id: "bbbbbbb2-bbbb-4bbb-8bbb-bbbbbbbbbbb1",
+        student_name: "Priya Raghunathan-Villanueva",
+        student_ref: "RHS-0002",
+        section_id: SECTION_WW,
+        section: "Woodwinds",
+        status: "not_recorded",
+        checked_in_at: null,
+        late: false,
+      },
+    ],
+  },
+
+  /** Feature 1: the student's own history, including one decided request. */
+  list_my_absence_requests: [
+    {
+      id: "12121212-1212-4212-8212-121212121212",
+      event_id: "99999999-9999-4999-8999-999999999999",
+      event_name: "Friday night football vs. Bellevue",
+      event_date: "2026-10-15T19:00:00.000Z",
+      attendance_requirement: "required",
+      reason: "Family trip out of town.",
+      status: "approved",
+      decision_note: "Approved — send your part recording before Friday.",
+      decided_at: "2026-10-10T18:00:00.000Z",
+      decided_by_name: profile.display_name,
+      resubmission_allowed: false,
+      created_at: "2026-10-09T18:00:00.000Z",
+      updated_at: "2026-10-10T18:00:00.000Z",
+    },
+  ],
+
+  /** Feature 1: the reviewer queue. */
+  list_absence_requests: [
+    {
+      id: "34343434-3434-4434-8434-343434343434",
+      event_id: "88888888-8888-4888-8888-888888888888",
+      event_name: "Marching rehearsal — homecoming set",
+      event_date: "2026-10-15T15:30:00.000Z",
+      attendance_requirement: "required",
+      student_id: "bbbbbbb3-bbbb-4bbb-8bbb-bbbbbbbbbbb1",
+      student_name: "Devon Okafor",
+      section_id: SECTION_PERC,
+      section: "Percussion and colorguard",
+      reason: "Orthodontist appointment.",
+      status: "pending",
+      decision_note: "",
+      decided_at: null,
+      decided_by_name: null,
+      resubmission_allowed: false,
+      created_at: "2026-10-12T12:00:00.000Z",
+      updated_at: "2026-10-12T12:00:00.000Z",
+    },
   ],
 };
 

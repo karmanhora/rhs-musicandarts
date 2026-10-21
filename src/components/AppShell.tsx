@@ -18,14 +18,13 @@ import {
   UserCog,
   Users,
 } from "lucide-react";
-import { fetchNotifications, markNotificationsRead } from "../lib/queries";
-import type { NotificationRow } from "../lib/types";
+import { fetchUnreadNotificationCount } from "../lib/queries";
 import { APP_NAME, ORG_NAME, ROLE_LABEL } from "../lib/constants";
-import { relativeDay } from "../lib/date";
 import { usePrograms } from "../hooks/usePrograms";
 import { useAuth } from "../hooks/useAuth";
 import { useDark } from "../hooks/useDark";
 import { ProgramSwitcher } from "./ProgramSwitcher";
+import { NotificationCenter } from "./NotificationCenter";
 import {
   Alert,
   Avatar,
@@ -77,6 +76,31 @@ export function AppShell() {
   const [accountOpen, setAccountOpen] = useState(false);
   const [switcherOpen, setSwitcherOpen] = useState(false);
   const [online, setOnline] = useState(() => navigator.onLine);
+  const [unread, setUnread] = useState(0);
+
+  /**
+   * The badge count. Realtime would be nicer, but this app already survives on
+   * a request-per-page model and there is no realtime channel to reuse — so a
+   * cheap `head` count on mount, on focus, when the program changes and once a
+   * minute keeps it honest without a new dependency.
+   */
+  const refreshUnread = useCallback(() => {
+    void fetchUnreadNotificationCount()
+      .then(setUnread)
+      .catch(() => {
+        /* leave the last known count; the sheet still works */
+      });
+  }, []);
+
+  useEffect(() => {
+    refreshUnread();
+    const timer = window.setInterval(refreshUnread, 60_000);
+    window.addEventListener("focus", refreshUnread);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("focus", refreshUnread);
+    };
+  }, [refreshUnread, app.program?.id]);
 
   useEffect(() => {
     const on = () => setOnline(true);
@@ -178,14 +202,24 @@ export function AppShell() {
 
           <span aria-hidden="true" className="hidden h-6 w-px bg-[var(--cue-line)] lg:block" />
 
-          <IconButton
-            label="Notifications"
-            onClick={() => setBellOpen(true)}
-            variant="ghost"
-            /* 44px, not 36: the same floor the avatar beside it documents. */
-            className="h-11 w-11"
-            icon={<Bell className="h-5 w-5" />}
-          />
+          <span className="relative inline-flex shrink-0">
+            <IconButton
+              label={unread > 0 ? `Notifications — ${unread} unread` : "Notifications"}
+              onClick={() => setBellOpen(true)}
+              variant="ghost"
+              /* 44px, not 36: the same floor the avatar beside it documents. */
+              className="h-11 w-11"
+              icon={<Bell className="h-5 w-5" />}
+            />
+            {unread > 0 ? (
+              <span
+                aria-hidden="true"
+                className="pointer-events-none absolute -top-0.5 -right-0.5 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-[var(--cue-gold)] px-1 text-[10px] font-bold text-[var(--cue-forest)] tabular"
+              >
+                {unread > 9 ? "9+" : unread}
+              </span>
+            ) : null}
+          </span>
           <IconButton
             label={dark ? "Use light mode" : "Use dark mode"}
             onClick={toggle}
@@ -279,7 +313,12 @@ export function AppShell() {
         </ul>
       </nav>
 
-      <NotificationsSheet open={bellOpen} onClose={() => setBellOpen(false)} />
+      <NotificationCenter
+        open={bellOpen}
+        onClose={() => setBellOpen(false)}
+        unreadCount={unread}
+        onChanged={refreshUnread}
+      />
       <AccountSheet open={accountOpen} onClose={() => setAccountOpen(false)} />
       <ProgramSwitcher open={switcherOpen} onClose={() => setSwitcherOpen(false)} />
     </div>
@@ -333,6 +372,34 @@ function AccountSheet({ open, onClose }: { open: boolean; onClose: () => void })
             trailing={<ChevronRight aria-hidden="true" className="h-4 w-4 text-[var(--cue-subtle)]" />}
             onClick={() => go("/settings")}
           />
+          {app.can("absence.request_self") || app.can("absence.review") ? (
+            <Row
+              icon={<CalendarDays className="h-4 w-4" />}
+              title="Absences"
+              subtitle={
+                app.can("absence.review")
+                  ? "Review requests and ask for your own"
+                  : "Ask to miss an event and follow the answer"
+              }
+              trailing={<ChevronRight aria-hidden="true" className="h-4 w-4 text-[var(--cue-subtle)]" />}
+              onClick={() => go("/absences")}
+            />
+          ) : null}
+          {app.can("attendance.view_program") ||
+          app.can("attendance.view_section") ||
+          app.can("attendance.export_reports") ? (
+            <Row
+              icon={<BarChart3 className="h-4 w-4" />}
+              title="Reports & history"
+              subtitle={
+                app.can("attendance.export_reports")
+                  ? "Download a report, or read every attendance change"
+                  : "Read the attendance change history"
+              }
+              trailing={<ChevronRight aria-hidden="true" className="h-4 w-4 text-[var(--cue-subtle)]" />}
+              onClick={() => go("/records")}
+            />
+          ) : null}
           {/* The way back to the invitation form for a teacher who signed in
               before they had their code. Students never see it: the invitation
               code is a teacher credential, not something a student can use. */}
@@ -381,47 +448,6 @@ function AccountSheet({ open, onClose }: { open: boolean; onClose: () => void })
           Sign out
         </Button>
       </div>
-    </Sheet>
-  );
-}
-
-function NotificationsSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const [rows, setRows] = useState<NotificationRow[] | null>(null);
-
-  const load = useCallback(async () => {
-    const next = await fetchNotifications();
-    setRows(next);
-    const unread = next.filter((n) => !n.read).map((n) => n.id);
-    await markNotificationsRead(unread);
-  }, []);
-
-  useEffect(() => {
-    if (!open) return;
-    setRows(null);
-    void load();
-  }, [open, load]);
-
-  return (
-    <Sheet open={open} onClose={onClose} title="Notifications" size="tall">
-      {rows === null ? (
-        <p className="type-meta py-8 text-center">Loading…</p>
-      ) : rows.length === 0 ? (
-        <p className="type-meta py-8 text-center">
-          Nothing yet. New events and open check-ins show up here.
-        </p>
-      ) : (
-        <List>
-          {rows.map((n) => (
-            <div key={n.id} className="px-3 py-3">
-              <div className="flex items-baseline justify-between gap-3">
-                <p className="type-heading truncate">{n.title}</p>
-                <span className="type-meta shrink-0 tabular">{relativeDay(n.created_at)}</span>
-              </div>
-              <p className="type-meta mt-1 line-clamp-3">{n.body}</p>
-            </div>
-          ))}
-        </List>
-      )}
     </Sheet>
   );
 }

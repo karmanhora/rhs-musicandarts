@@ -231,13 +231,27 @@ export async function fetchSessionForEvent(eventId: string): Promise<CheckinSess
   return (data as CheckinSessionRow | null) ?? null;
 }
 
-export async function fetchNotifications(): Promise<NotificationRow[]> {
+export async function fetchNotifications(limit = 40): Promise<NotificationRow[]> {
   const { data } = await supabase
     .from("notifications")
     .select("*")
     .order("created_at", { ascending: false })
-    .limit(30);
+    .limit(limit);
   return (data ?? []) as NotificationRow[];
+}
+
+/**
+ * How many of the caller's own notifications are unread. A `head` count is one
+ * cheap round-trip and still RLS-scoped to the caller's rows, so it can never
+ * report somebody else's inbox.
+ */
+export async function fetchUnreadNotificationCount(): Promise<number> {
+  const { count, error } = await supabase
+    .from("notifications")
+    .select("id", { count: "exact", head: true })
+    .eq("read", false);
+  if (error) return 0;
+  return count ?? 0;
 }
 
 export async function markNotificationsRead(ids: string[]): Promise<void> {

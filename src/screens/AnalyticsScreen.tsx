@@ -21,6 +21,7 @@ import { fetchRoster } from "../lib/queries";
 import {
   getAttendanceTrend,
   getEventAttendanceSummary,
+  getEventRequirementStats,
   getSectionAttendanceStats,
   getStudentAttendancePct,
 } from "../lib/rpc";
@@ -77,6 +78,8 @@ export function AnalyticsScreen() {
   const [pcts, setPcts] = useState<Map<string, number | null>>(new Map());
   const [sections, setSections] = useState<SectionStatRow[]>([]);
   const [trend, setTrend] = useState<TrendRow[]>([]);
+  /** `get_event_requirement_stats()` — required average vs optional turnout. */
+  const [requirements, setRequirements] = useState<RpcResult | null>(null);
   const [refusal, setRefusal] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -90,15 +93,17 @@ export function AnalyticsScreen() {
     setLoading(true);
     setError(null);
     try {
-      const [people, sectionStats, recent] = await Promise.all([
+      const [people, sectionStats, recent, requirementStats] = await Promise.all([
         fetchRoster(programId),
         getSectionAttendanceStats(programId),
         getAttendanceTrend(programId, 10),
+        getEventRequirementStats(programId),
       ]);
 
       setRoster(people);
       setSections(sectionStats.rows);
       setTrend(recent.rows);
+      setRequirements(requirementStats.result);
       setRefusal(sectionStats.message ?? recent.message ?? null);
 
       const rosterStudents = people.filter((m) => m.active && !m.roles.includes("director"));
@@ -274,6 +279,62 @@ export function AnalyticsScreen() {
             </div>
           ) : null}
         </section>
+
+        {/* --- required vs optional, and what each figure includes --- */}
+        {requirements?.ok ? (
+          <section aria-label="Required and optional events">
+            <SectionTitle className="mb-2">Required and optional</SectionTitle>
+            <div className="cue-card overflow-hidden rounded-[var(--radius-panel)]">
+              <MetricStrip columns={4}>
+                <Metric
+                  label="Required events"
+                  value={requirements.required_events ?? 0}
+                  hint="Count toward the required-event rate"
+                />
+                <Metric
+                  label="Required average"
+                  value={
+                    requirements.required_average_pct === null ||
+                    requirements.required_average_pct === undefined
+                      ? "—"
+                      : `${requirements.required_average_pct}%`
+                  }
+                  tone="present"
+                  hint={
+                    requirements.measured_students
+                      ? `${requirements.measured_students} students with a mark`
+                      : "No marks yet"
+                  }
+                />
+                <Metric
+                  label="Optional turnout"
+                  value={
+                    requirements.optional_turnout_pct === null ||
+                    requirements.optional_turnout_pct === undefined
+                      ? "—"
+                      : `${requirements.optional_turnout_pct}%`
+                  }
+                  tone="late"
+                  hint={`${requirements.optional_attended ?? 0} of ${
+                    requirements.optional_marks ?? 0
+                  } marks across ${requirements.optional_events ?? 0} optional events`}
+                />
+                <Metric
+                  label="No attendance"
+                  value={requirements.excluded_events ?? 0}
+                  tone="muted"
+                  hint="Excluded from every percentage"
+                />
+              </MetricStrip>
+              <div className="hairline-t px-4 py-3">
+                <p className="type-meta">
+                  {requirements.basis ??
+                    "Optional events never reduce the required-event rate, and an event with no attendance is excluded from both."}
+                </p>
+              </div>
+            </div>
+          </section>
+        ) : null}
 
         {students.length === 0 ? (
           <div className="cue-card rounded-[var(--radius-panel)]">

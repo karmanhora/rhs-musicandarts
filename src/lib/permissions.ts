@@ -30,6 +30,9 @@ export type PermissionCode =
   | "attendance.manage_events"
   | "attendance.manage_roster"
   | "attendance.view_staff_notes"
+  | "attendance.export_reports"
+  | "absence.request_self"
+  | "absence.review"
   | "events.view_program"
   | "calendar.view_sources"
   | "attendance.view_analytics"
@@ -43,6 +46,7 @@ export type PermissionCategory =
   | "profile"
   | "roster"
   | "attendance"
+  | "absence"
   | "events"
   | "calendar"
   | "analytics"
@@ -83,6 +87,7 @@ export const PERMISSION_CATEGORY_LABEL: Record<PermissionCategory, string> = {
   profile: "Profile",
   roster: "Roster",
   attendance: "Attendance",
+  absence: "Absences",
   events: "Events",
   calendar: "Calendar",
   analytics: "Analytics",
@@ -108,6 +113,10 @@ export const PERMISSIONS: PermissionMeta[] = [
   { code: "attendance.manage_events", label: "Manage events", description: "Create and edit events for this program.", category: "attendance", scope: "program", delegable: true },
   { code: "attendance.manage_roster", label: "Manage the roster", description: "Add, pause and reactivate members; move sections.", category: "attendance", scope: "program", delegable: true },
   { code: "attendance.view_staff_notes", label: "Read staff notes", description: "See the private notes staff write on attendance records.", category: "attendance", scope: "program", delegable: true },
+  { code: "attendance.export_reports", label: "Export attendance reports", description: "Download this program's attendance as a spreadsheet-ready report.", category: "analytics", scope: "program", delegable: true },
+
+  { code: "absence.request_self", label: "Request an absence", description: "Ask a director to excuse you from an upcoming event.", category: "absence", scope: "self", delegable: true },
+  { code: "absence.review", label: "Review absence requests", description: "See, approve and deny students' absence requests for this program.", category: "absence", scope: "program", delegable: true },
 
   { code: "events.view_program", label: "View program events", description: "See this program's calendar and events.", category: "events", scope: "program", delegable: true },
   { code: "calendar.view_sources", label: "View calendar settings", description: "See connected calendar feeds for this program.", category: "calendar", scope: "program", delegable: true },
@@ -149,6 +158,7 @@ export const ROLE_PERMISSION_FALLBACK: Record<Role, PermissionCode[]> = {
     "events.view_program",
     "roster.view_program",
     "attendance.view_self",
+    "absence.request_self",
   ],
   section_leader: [
     "profile.view_self",
@@ -160,6 +170,7 @@ export const ROLE_PERMISSION_FALLBACK: Record<Role, PermissionCode[]> = {
     "attendance.mark_section",
     "attendance.view_staff_notes",
     "attendance.manage_checkin_sessions",
+    "absence.request_self",
   ],
   secretary: [
     "profile.view_self",
@@ -174,6 +185,7 @@ export const ROLE_PERMISSION_FALLBACK: Record<Role, PermissionCode[]> = {
     "attendance.manage_checkin_sessions",
     "attendance.manage_events",
     "calendar.view_sources",
+    "absence.request_self",
   ],
   director: [
     "profile.view_self",
@@ -195,6 +207,9 @@ export const ROLE_PERMISSION_FALLBACK: Record<Role, PermissionCode[]> = {
     "roles.assign",
     "roles.revoke",
     "program.manage_settings",
+    "absence.request_self",
+    "absence.review",
+    "attendance.export_reports",
   ],
 };
 
