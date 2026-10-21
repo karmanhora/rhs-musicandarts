@@ -1,0 +1,23 @@
+# What the Vercel build does not need. Uploading these made the source tarball
+# ~345 MB (mostly local Postgres binaries and installed modules), which is slow
+# and flaky to upload; the build reinstalls its own dependencies.
+node_modules
+dist
+.tools
+test-results
+playwright-report
+screenshots
+e2e
+docs
+reference
+scripts
+supabase
+.agents
+.claude
+.freebuff
+.vercel
+
+# Secrets stay local; the build gets its configuration from Vercel env vars.
+.env
+.env.*
+!.env.example

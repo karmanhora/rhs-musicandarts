@@ -269,19 +269,39 @@ Verified **on the production project** after the push:
   function (no 404 — PostgREST's schema cache picked them up) and an anonymous
   caller is refused with `42501 permission denied for function …`.
 
-### 6b. Remaining steps (not performed)
+### 6b. Frontend — deployed (2026-10-21)
 
-1. Deploy the Vercel build; the new screens call RPCs that the database now has,
-   so the frontend is the only part still missing in production.
-2. No new environment variables, Edge Functions, Resend templates or cron jobs
+`main` at `5fbf8a4` is live on https://rhsattendance.org (deployment
+`rhs-musicandarts-r05jzpl3d-mandalora.vercel.app`, aliased to the production
+domain). Verified on the deployed origin: the entry bundle now lazy-loads
+`AbsenceScreen-*.js` and `RecordsScreen-*.js`, those chunks carry the new copy
+("Absence request", "Attendance history", "Export", "Not recorded"), `/`,
+`/absences` and `/records` all answer `200 text/html`, the security headers from
+`vercel.json` are still served, and `/absences` renders the sign-in gate with a
+clean console.
+
+**The push itself did not deploy it.** Vercel created a deployment for
+`5fbf8a4` and blocked it one second later with "the commit author doesn't have
+permission to create deployments for this project": the commits are authored by
+`1061369@lwsd.org`, which is not a member of the `mandalora` Vercel team that
+owns the project. The live build was therefore pushed with the authenticated
+CLI (`vercel --prod --archive=tgz`, the tarball upload being required because
+the plain upload exceeds Vercel's 15,000-file limit). Until that address is
+added to the Vercel account/team, or the local `user.email` is pointed at one
+that is already a member, **git-triggered production deploys will keep being
+blocked** and each release needs a CLI deploy.
+
+### 6c. Remaining steps (not performed)
+
+1. No new environment variables, Edge Functions, Resend templates or cron jobs
    are required. In-app notifications deliberately do not depend on email.
-3. No client type regeneration is needed: the client types are hand-written in
+2. No client type regeneration is needed: the client types are hand-written in
    `src/lib/types.ts`.
-4. Smoke-test on the deployed origin: submit a request as a student, decide it
+3. Smoke-test on the deployed origin: submit a request as a student, decide it
    as a director, confirm the student's bell shows the decision, correct a mark
    on the roll and see it in `/records`, and download one CSV. These
    authenticated flows were exercised locally against the migration harness,
-   not against production.
+   not against production, which the deployment could not change.
 
 Rollback: each migration's header names its own reversal. Dropping
 `attendance_audit`, `absence_requests`, `notifications.dedupe_key` and the new
