@@ -53,9 +53,15 @@ begin
   ) then
     raise exception 'FAIL: staff-notes policy missing — apply migration 005 first';
   end if;
-  if position('Check-in opens 15 minutes before the event.' in
+  -- Since 20261024090000_checkin_any_time.sql the opener has no early window;
+  -- the ended-event guard is the one that must remain.
+  if position('already ended' in
       pg_get_functiondef('public.start_checkin_session(uuid)'::regprocedure)) = 0 then
-    raise exception 'FAIL: QR opening guard missing — apply migration 006 first';
+    raise exception 'FAIL: QR opening guard missing — the ended-event check must stay';
+  end if;
+  if position('Check-in opens 15 minutes' in
+      pg_get_functiondef('public.start_checkin_session(uuid)'::regprocedure)) > 0 then
+    raise exception 'FAIL: the 15-minute early window is back in start_checkin_session';
   end if;
 end $$;
 
@@ -169,12 +175,18 @@ begin
   perform set_config('request.jwt.claim.sub', 'ffffffff-0000-4000-8000-000000000006', true);
   set role authenticated;
 
-  -- A1: manual code 30 minutes before start → rejected.
+  -- A1: manual code 30 minutes before start → accepted (no early window).
   v := public.record_attendance_by_code('EARLY123');
-  perform public.t_assert(v->>'ok' = 'false' and v->>'message' = 'Check-in has not opened yet.',
-    'A1 manual code 30 min before start must be rejected');
+  perform public.t_assert(v->>'ok' = 'true' and v->>'message' = 'Checked in',
+    'A1 manual code 30 min before start must be accepted');
+  perform public.t_assert(
+    (select ar.attended and ar.status = 'present'
+       from public.attendance_records ar
+      where ar.event_id = 'eeeeeeee-0000-4000-8000-000000000001'
+        and ar.student_id = 'ffffffff-0000-4000-8000-000000000006'),
+    'A1 early check-in must be present, never late');
 
-  -- A2: manual code 10 minutes before start → allowed (within window).
+  -- A2: manual code 10 minutes before start → allowed.
   v := public.record_attendance_by_code('OPEN1234');
   perform public.t_assert(v->>'ok' = 'true' and v->>'message' = 'Checked in',
     'A2 manual code 10 min before start must be accepted');
@@ -229,10 +241,17 @@ begin
   perform set_config('request.jwt.claim.sub', 'ffffffff-0000-4000-8000-000000000005', true);
   set role authenticated;
 
-  -- B1: 30 minutes before start → rejected with a clear message.
+  -- B1: 30 minutes before start → accepted, because check-in opens as soon as
+  -- the event exists.
   v := public.record_attendance('tst-tok-early');
-  perform public.t_assert(v->>'ok' = 'false' and v->>'message' = 'Check-in has not opened yet.',
-    'B1 QR scan 30 min before start must be rejected');
+  perform public.t_assert(v->>'ok' = 'true' and v->>'message' = 'Checked in',
+    'B1 QR scan 30 min before start must be accepted');
+  perform public.t_assert(
+    (select ar.attended and ar.status = 'present'
+       from public.attendance_records ar
+      where ar.event_id = 'eeeeeeee-0000-4000-8000-000000000001'
+        and ar.student_id = 'ffffffff-0000-4000-8000-000000000005'),
+    'B1 early QR check-in must be present, never late');
 
   -- B2: expired session → rejected.
   v := public.record_attendance('tst-tok-exp');
@@ -397,7 +416,8 @@ begin
       where event_id = 'eeeeeeee-0000-4000-8000-000000000007') = 1,
     'C4 QR session must survive qr → both');
 
-  -- C5: session creation still respects mode and the 15-minute window.
+  -- C5: session creation still respects mode and the ended-event guard, but
+  -- no longer has an early window.
   v := public.start_checkin_session('eeeeeeee-0000-4000-8000-000000000006'); -- now toggle
   perform public.t_assert(v->>'ok' = 'false'
     and v->>'message' = 'This event uses toggle check-in — mark attendance with the buttons on the Check-In screen.',
@@ -406,16 +426,14 @@ begin
   perform public.t_assert(v->>'ok' = 'false' and v->>'message' = 'This event doesn''t collect attendance.',
     'C5b no QR session for a non-collecting event');
   v := public.start_checkin_session('eeeeeeee-0000-4000-8000-000000000001'); -- 30 min early
-  perform public.t_assert(v->>'ok' = 'false'
-    and v->>'message' = 'Check-in opens 15 minutes before the event.',
-    'C5c QR creation 30 min early must be rejected');
+  perform public.t_assert(v->>'ok' = 'true',
+    'C5c QR creation 30 min early must be accepted');
 
   update public.events set date = now() + interval '16 minutes'
    where id = 'eeeeeeee-0000-4000-8000-000000000001';
   v := public.start_checkin_session('eeeeeeee-0000-4000-8000-000000000001');
-  perform public.t_assert(v->>'ok' = 'false'
-    and v->>'message' = 'Check-in opens 15 minutes before the event.',
-    'C5d QR creation 16 min early must be rejected');
+  perform public.t_assert(v->>'ok' = 'true',
+    'C5d QR creation 16 min early must be accepted');
 
   update public.events set date = now() + interval '15 minutes'
    where id = 'eeeeeeee-0000-4000-8000-000000000001';

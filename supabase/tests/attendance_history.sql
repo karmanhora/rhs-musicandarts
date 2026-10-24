@@ -80,7 +80,7 @@ values
   ('52000000-0000-4000-8000-000000000101', '52000000-0000-4000-8000-0000000000a1',
    'AH Past Rehearsal', 'Rehearsal', 'rehearsal', now() - interval '2 days', null, 'toggle', 'required', 10, false),
   -- Live right now, so a QR session can be opened and a student can scan:
-  -- check-in opens 15 minutes before and closes 24 hours after the start.
+  -- check-in opens as soon as the event exists and closes 24 hours after the start.
   ('52000000-0000-4000-8000-000000000102', '52000000-0000-4000-8000-0000000000a1',
    'AH Live Rehearsal', 'Rehearsal', 'rehearsal', now() - interval '3 minutes', null, 'qr', 'required', 10, false);
 
