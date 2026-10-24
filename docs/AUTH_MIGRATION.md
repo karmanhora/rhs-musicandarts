@@ -8,7 +8,8 @@ have real people with attendance history. §3 stays as the record of what was
 applied and why.
 
 This is the record of what changed, why the database did not have to be
-restructured for it, exactly what an operator has to run, and how to go back.
+restructured for it, exactly what an operator had to run, and how the change could
+have been reversed (§8, historical and not an approved path).
 
 ---
 
@@ -63,6 +64,11 @@ hardening migration dropped it, after a backup — all nine rows were NULL, so n
 account link was lost. `auth_user_id` is the only identity column now.
 
 ## 3. Apply the migration
+
+> **Status: applied.** This section records how migration 021 was applied; it is not
+> an instruction to repeat it. The migration is recorded as live and its schema was
+> verified on 2026-10-17 (see the status at the top of this file). Do not re-run
+> these commands against the hosted project without the owner's explicit approval.
 
 One file: `supabase/migrations/021_supabase_auth.sql`. Idempotent, additive, and
 self-verifying — it raises `FAIL: …` if the identity layer did not actually move
@@ -273,8 +279,15 @@ assumed:
 
 ## 8. Rollback
 
+> **Historical, and prohibited without the owner's explicit approval.** The steps
+> below record how the 2026-10-09 migration could have been undone. They are not an
+> approved path, none of them has been run, and they must not be executed.
+> Supabase Auth is the current and only identity system ([DEV.md §4](DEV.md));
+> restoring Clerk, `profiles.clerk_id`, the `/_clerk` rewrite or the Clerk
+> environment variables needs the owner's explicit approval.
+
 Migration 021 is additive, so nothing has to be undone for the database to be
-consistent. To go back to Clerk:
+consistent. The steps below describe a hypothetical return to Clerk:
 
 1. Restore the previous helper body (this is the exact `013` definition, only the
    column it reads differs — re-run it as one statement):
@@ -287,6 +300,7 @@ consistent. To go back to Clerk:
 
 2. Redeploy a frontend build that still has Clerk (the commit before this
    migration), and restore the Clerk Vercel variables and the `/_clerk` rewrite.
+   *(Historical step — not approved.)*
 3. `profiles.clerk_id` no longer exists (dropped 2026-10-16, all rows NULL), so a
    rollback to Clerk would have to re-add the column and repopulate it first. Every
    `auth_user_id` stays where it is, so no data is lost either way.

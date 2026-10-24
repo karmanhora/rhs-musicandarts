@@ -29,7 +29,7 @@ new decision — append here instead.
 | Decision | Status | Evidence |
 | --- | --- | --- |
 | **Supabase Auth is the only identity provider.** Identity resolves through `public.current_profile_id()` → `profiles.auth_user_id`. | Decided, live | [AUTH_MIGRATION.md](AUTH_MIGRATION.md) ("done and live", checked 2026-10-17); [DEV.md §4](DEV.md); `package.json` has no Clerk dependency |
-| **Clerk was removed, not paused.** No Clerk provider, webhook, proxy, rewrite, env vars, or `profiles.clerk_id`. | Removed 2026-10-09 | [PLATFORM_PLAN.md](PLATFORM_PLAN.md) reversal note; `20261016230715_move_pg_net_drop_clerk_id.sql`; `021_supabase_auth.sql` |
+| **Clerk was removed, not paused.** No Clerk provider, webhook, proxy, rewrite, env vars, or `profiles.clerk_id`. | Removed 2026-10-09 | [PLATFORM_PLAN.md](PLATFORM_PLAN.md) status note and historical labels; `20261016230715_move_pg_net_drop_clerk_id.sql`; `021_supabase_auth.sql` |
 | **No `auth.users` signup trigger.** The join code is collected in the app by `join_program()`; re-adding the trigger would create a second profile per account. | Removed (migration 018) | [018_retire_legacy.sql](../supabase/migrations/018_retire_legacy.sql); [DEV.md §4](DEV.md) |
 | **Chat is retired.** Tables survive with a deny-all policy and no `ensemble_id`; no UI, no access helper, no notification trigger. | Removed (migration 018) | [018_retire_legacy.sql](../supabase/migrations/018_retire_legacy.sql); [FEATURE_GAP_REPORT.md](FEATURE_GAP_REPORT.md) ("chat was retired in 018") |
 | **Removing a member is `remove_member()`**, scoped to one program: membership, custom role grants and that program's attendance are deleted; the profile and sign-in account stay. | Decided | [DEV.md §5, §7](DEV.md); `031_program_sections_and_removal.sql` |
@@ -50,7 +50,8 @@ new decision — append here instead.
 
 ## 2. Platform direction: umbrella site, one program
 
-**Current direction (verified):** the site is the **Redmond High School Music and
+**Current direction (verified in the repository — DEV.md, the shipped UI and
+migration 020):** the site is the **Redmond High School Music and
 Arts Program** — one umbrella containing each program's attendance tracker. The
 interface says "program"; the database says `ensemble`. Only `band` ships today,
 and the schema is multi-program-ready by design.
@@ -94,10 +95,11 @@ inference from a stale document or an empty table.
 | A `special` value for `attendance_requirement` | Documented extension point only |
 | MFA, social/SSO providers beyond Google, self-service account deletion | Not built |
 
-## 4. Unresolved conflicts
+## 4. Conflicts and their current status
 
-Recorded because an agent that reads only one side would act incorrectly. None of
-these is settled by this file.
+Recorded because an agent that reads only one side would act incorrectly. Each
+entry says whether the conflict was resolved in the documents on 2026-10-24 or is
+still open. None of these is settled by this file.
 
 ### 4.1 The Privacy Policy Contact section — removed, then apparently restored
 
@@ -130,38 +132,47 @@ address.
   and the frontend deployed to `rhsattendance.org` the same day, with verification
   detail.
 
-**Working conclusion:** the document is live. The header is stale. Do **not** use
-the header as a reason to apply those migrations again.
+**Resolved in the document (2026-10-24):** a dated status note now sits directly
+under the stale sentence, pointing at §6a/§6b and the matching commits. The
+sentence is left as written so the report's own history stays intact. Production
+state is still not independently verified here — do **not** use the header as a
+reason to apply those migrations again.
 
 ### 4.3 DEV.md's "Not done yet" is partly a stale backlog
 
-[DEV.md §7](DEV.md) still asks for migration 021 to be applied before anyone signs
-in and lists 029/030 as applied-but-not-deployed. [AUTH_MIGRATION.md](AUTH_MIGRATION.md)
-records 021 as done and live, and [FEATURE_IMPLEMENTATION_REPORT.md §6a](FEATURE_IMPLEMENTATION_REPORT.md)
-records local and remote migrations in step on 2026-10-21. Acting on §7 as written
-would mean re-running migrations against production.
+Before 2026-10-24, [DEV.md §7](DEV.md) asked for migration 021 to be applied before
+anyone signs in and listed 029/030 as applied-but-not-deployed. That description
+was stale: [AUTH_MIGRATION.md](AUTH_MIGRATION.md) recorded 021 as done and live, and
+[FEATURE_IMPLEMENTATION_REPORT.md §6a](FEATURE_IMPLEMENTATION_REPORT.md) recorded
+local and remote migrations in step on 2026-10-21. Acting on §7 as it then read
+would have meant re-running migrations against production.
 
-**Needed:** a dated cleanup of DEV.md §7. Until then, verify migration state from
-the project and `supabase/migrations/`, not from that section.
+**Addressed in DEV.md (2026-10-24):** §7 now opens with a status note, and the
+stale entries state what is *recorded* versus what an operator must still verify.
+Live state is still not verified from this document; check the project before
+acting.
 
 ### 4.4 Migration counts disagree across documents
 
-DEV.md says `007`–`036`; the gap report says 33 migrations; the implementation
-report says 39 applied. The tree holds **39** files in `supabase/migrations/` and
-**24** suites in `supabase/tests/`. Any count in prose is unreliable — use the
-directory or `supabase migration list --linked`.
+**Documented, not resolved (2026-10-24).** DEV.md no longer states a stale range
+(it names the tree's 39 files). The gap report's "33 migrations" and the
+implementation report's "39 applied" are snapshots of their own dates, left as
+written. The tree holds **39** files in `supabase/migrations/` and **24** suites in
+`supabase/tests/`. Any count in prose is unreliable — use the directory or
+`supabase migration list --linked`.
 
-### 4.5 PLATFORM_PLAN still reads like a Clerk build spec in places
+### 4.5 PLATFORM_PLAN's Clerk sections (now labeled historical)
 
-The reversal note is at the top, but the document's status line, §12 decision 3
-and all of §13 still describe Clerk as approved architecture, and §8–§9 describe
-`clerk_id` personas and a `03b_clerk_import.sh` step. The decision itself is
-**not** unresolved — Supabase Auth is live — but the text is a live reintroduction
-risk, and [AUTH_MIGRATION.md §8](AUTH_MIGRATION.md) contains step-by-step
-instructions for going back to Clerk.
+The decision itself was never unresolved — Supabase Auth is live — but the
+document's status line, §12 decision 3 and all of §13 used to read as approved
+architecture, and §8–§9 described `clerk_id` personas and a `03b_clerk_import.sh`
+step.
 
-**Rule:** treat §13 and that rollback section as history. Ask before acting on
-either.
+**Resolved in the documents (2026-10-24):** PLATFORM_PLAN opens with the current
+decision and labels those sections historical and non-executable;
+[AUTH_MIGRATION.md](AUTH_MIGRATION.md) §3 is marked applied and §8 is marked
+historical and prohibited without owner approval. The text is preserved, not
+deleted.
 
 ## 5. Open questions that belong to the owner
 

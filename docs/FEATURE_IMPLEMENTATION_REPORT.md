@@ -9,6 +9,16 @@ This is the closing report for the work planned in
 locally; **nothing has been applied to the production Supabase project or
 deployed to Vercel**.
 
+> **Status clarification (2026-10-24).** The sentence above records the state when
+> this report was written (2026-10-20), not the final state. §6a and §6b below
+> record the six migrations applied to the production project on 2026-10-21 and the
+> frontend deployed to `rhsattendance.org` the same day, with the verification
+> performed then; commits `5fbf8a4`, `5a9b405` and `4fdc3f4` (all 2026-10-21) are
+> the matching history. This note reconciles the report with its own later sections
+> and Git history — it does **not** independently re-verify production. Nothing
+> here is a reason to apply those migrations again; §6a is the record of an
+> already-applied batch.
+
 ---
 
 ## 1. What already existed before this change
@@ -292,7 +302,7 @@ through Git as normal — GitHub's deployment record for it reports
 deploy.
 
 The CLI also revealed a second problem worth keeping fixed:
-[.vercelignore](.vercelignore) now excludes `node_modules`, `dist`, `.tools`
+[.vercelignore](../.vercelignore) now excludes `node_modules`, `dist`, `.tools`
 (local Postgres binaries), test output and the test/ops directories. Without it
 the upload was ~345 MB and a deploy failed mid-stream ("fetch failed"); with it
 the upload is small and builds finish in seconds.

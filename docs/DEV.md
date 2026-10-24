@@ -18,7 +18,7 @@ exists, but nothing in the code assumes it is the only one.
 | Path | What it is |
 | --- | --- |
 | `src/` | The web app: Vite + React 19 + TypeScript + Tailwind v4 |
-| `supabase/migrations/007`–`036` | The multi-program schema, policies, RPCs, calendar sync, join flow, Supabase Auth identity, teacher-gated `create_program`, account/program lifecycle, staff-managed email invitations, the capability layer (029), profile pictures (030), program instruments + complete removal (031), the scheduled digest (032–033), pinned function search paths (034), teacher/director verification by invitation code (035), and the 48-hour reminder + post-event make-up email queues (036) |
+| `supabase/migrations/` (39 files) | The multi-program schema, policies, RPCs, calendar sync, join flow, Supabase Auth identity, teacher-gated `create_program`, account/program lifecycle, staff-managed email invitations, the capability layer (029), profile pictures (030), program instruments + complete removal (031), the scheduled digest (032–033), pinned function search paths (034), teacher/director verification by invitation code (035), the 48-hour reminder + post-event make-up email queues (036), and the later timestamped migrations (attendance audit, absence requests, reports, notification centre). Applied state is recorded in the reports, never inferred from this count |
 | `supabase/tests/` | SQL suites (backfill, isolation, security, join, create program, signup account type, teacher invitations, account deletion, program archive, email invites, capabilities & avatars, program sections & removal, digest reachability, event reminder + make-up email rules) run inside transactions |
 | `supabase/templates/` | Branded Supabase auth emails and the password-change security notification — see [`EMAIL_SETUP.md`](EMAIL_SETUP.md) |
 | `public/` | The app's brand assets: one `logo.svg` and the icons rendered from it — see [`BRAND_ASSETS.md`](BRAND_ASSETS.md) |
@@ -275,6 +275,12 @@ row (`public.can_read_avatar` → `can_view_profile`).
 
 ## 5. Database
 
+> **Status note (2026-10-24).** Migration dates and "applied/verified" notes in
+> this section are recorded from the runs that performed them — this guide, the
+> migration headers and the dated reports they cite. They are not re-checked
+> against the hosted project for this revision. Never re-apply a migration because
+> this section says it was applied; check the project first.
+
 Work on the **NEW** project (`sjiswrvhrnrxkrfhfjrp`). The old project and the old
 Vercel deployment are read-only, forever.
 
@@ -326,13 +332,15 @@ applying (`generate_join_code(8)` → an 8-character code,
 which no longer reports the lint.
 
 Migrations 029, 030, 031, 032 and 033 were applied to the live project on
-**2026-10-11**. The frontend that uses them still has to be deployed: the roster
-and profile queries select `avatar_path` and `bio`, the role screens call the 029
-RPCs, the create-program and roster screens now call 031, and the roster screen
-reads who the weekly email reaches through 033. All five are additive and
-idempotent. 032's sending half — the `event-digest` edge function — is deployed
-too; the *upcoming-event emails* bullet below is the exact list of what is still
-missing.
+**2026-10-11** (recorded here from that run; not re-checked for this revision).
+The frontend that uses them was deployed on **2026-10-21**
+([`FEATURE_IMPLEMENTATION_REPORT.md`](FEATURE_IMPLEMENTATION_REPORT.md) §6b): the
+roster and profile queries select `avatar_path` and `bio`, the role screens call
+the 029 RPCs, the create-program and roster screens call 031, and the roster
+screen reads who the weekly email reaches through 033. All five are additive and
+idempotent. 032's sending half — the `event-digest` edge function — is recorded as
+deployed too; the *upcoming-event emails* bullet below lists what is still
+outstanding (the scheduled job).
 
 Migration 031 changes shape in two ways —
 
@@ -492,16 +500,25 @@ Rules the code follows, and that changes should keep:
 
 ## 7. Not done yet
 
+> **Status note (2026-10-24).** This section mixes finished work with work that is
+> still open, and some entries were written before the work they describe was
+> applied. Where an entry says "apply migration N", treat it as history unless the
+> project's own migration list shows N unapplied. Applied state below is *recorded*
+> from dated reports and notes; it is not re-verified against the hosted project
+> from this document, and it is never inferred from the number of files in
+> `supabase/migrations/`.
+
 - **The signed-in screens have not been clicked through by a person with a real
   account.** The design pass was verified by typecheck, production build, the
   rendered public/auth pages and a computed-state audit (fonts, tokens, contrast
   in both themes); the roster, roll, analytics, roles and settings screens are
   verified structurally, not exercised against a live session.
 
-- **Apply migration 021 to the live project before anyone signs in**, then set
-  the dashboard's Site URL / Redirect URLs. The exact SQL, the settings and the
-  one manual step for people who already have attendance history are in
-  [`docs/AUTH_MIGRATION.md`](AUTH_MIGRATION.md).
+- **Migration 021 is recorded as applied** — it is in the hosted project's applied
+  migrations and the schema matched on 2026-10-17 ([`docs/AUTH_MIGRATION.md`](AUTH_MIGRATION.md)).
+  The dashboard's Site URL / Redirect URLs and the one manual step for people who
+  already have attendance history are described there too; their completion is an
+  operator setting this document cannot verify. Do not re-apply 021.
 - **Existing people are not linked to an account yet.** `profiles.auth_user_id`
   is NULL for anybody who has never signed in through Supabase Auth. Migration
   021 backfills the exact matches it can prove (a surviving `auth.users` row with
@@ -519,15 +536,20 @@ Rules the code follows, and that changes should keep:
   `profiles.deactivated`), but no longer has a button. Account deletion (the
   `/settings` flow, migration 025) is separate: it de-identifies the profile and
   *keeps* attendance.
-- **Apply migration 035 before deploying the frontend that uses it** — and hand
-  the initial invitation code to its teacher in the same window. With 035 applied
-  and the old frontend live, teacher accounts cannot start a program until a code
-  is redeemed; existing directors are unaffected. The apply step, the binding of
-  the first code and the day-to-day operations are all in
-  [`TEACHER_VERIFICATION.md`](TEACHER_VERIFICATION.md).
-- **029 and 030 are applied** (live project, 2026-10-11). What remains for them
-  is the deploy: the role-management screens, the biography and the uploaded
-  picture all read the columns and functions those two migrations create.
+- **Migration 035 is recorded as applied** in the 2026-10-21 report (its
+  `supabase migration list --linked` shows local and remote in step), and the
+  frontend that uses it was deployed on 2026-10-21
+  ([`FEATURE_IMPLEMENTATION_REPORT.md`](FEATURE_IMPLEMENTATION_REPORT.md) §6b).
+  Handing the initial invitation code to its
+  teacher is an operational step this repository cannot show; if no code was
+  bound, teacher accounts still cannot start a program until one is redeemed.
+  The apply step, the binding of the first code and the day-to-day operations are
+  all in [`TEACHER_VERIFICATION.md`](TEACHER_VERIFICATION.md).
+- **029 and 030 are applied** (live project, 2026-10-11), and the frontend that
+  uses them was deployed on 2026-10-21 (recorded in
+  [`FEATURE_IMPLEMENTATION_REPORT.md`](FEATURE_IMPLEMENTATION_REPORT.md) §6b). The
+  role-management screens, the biography and the uploaded picture all read the
+  columns and functions those two migrations create.
 - **Storage is private now.** The `avatars` bucket is `public = false` with a
   5 MB / images-only cap (030). Anything that used to display an avatar through a
   public URL must go through the signed-URL path in `src/hooks/useAvatars.tsx`.
@@ -549,12 +571,14 @@ Rules the code follows, and that changes should keep:
   it can reach, and the reason each of the rest is skipped — turned it off, no
   working account behind the row, no address, unconfirmed, deactivated. It
   reports the *state* of an address and never the address, which is why staff may
-  ask; anybody else is refused. `digest_reachability()` is applied live and the
-  card ships with the next frontend deploy.
-- **Apply migration 032 before deploying a frontend that reads it.**
-  `fetchMyMemberships` now selects `memberships.email_upcoming_events`, so a
-  deploy ahead of the migration fails that query for every signed-in person.
-  Migration first, then the app — the same order 029 and 030 needed.
+  ask; anybody else is refused. `digest_reachability()` is recorded as applied
+  (2026-10-11, §5) and the card shipped with the 2026-10-21 frontend deploy
+  ([`FEATURE_IMPLEMENTATION_REPORT.md`](FEATURE_IMPLEMENTATION_REPORT.md) §6b).
+- **Migration 032 is applied** (live project, 2026-10-11; see §5), and the
+  frontend that reads it was deployed on 2026-10-21. The ordering rule still
+  matters for any future schema change: `fetchMyMemberships` selects
+  `memberships.email_upcoming_events`, so a deploy ahead of the migration fails
+  that query for every signed-in person. Migration first, then the app.
 - **Upcoming-event emails are deployed and configured, but not scheduled**
   (migration 032 + the `event-digest` function). The function is deployed with
   `verify_jwt = false`, and `RESEND_API_KEY`, `RESEND_FROM`,
@@ -565,12 +589,15 @@ Rules the code follows, and that changes should keep:
   until the shared Resend quota is settled, because one run can mail up to 500
   people and the free tier allows 100 a day (auth mail included).
   `docs/EMAIL_SETUP.md` §6a explains what the digest does and who it skips.
-- **Migration 036 adds the 48-hour reminder and the staff make-up email.**
-  Applying it alone changes no mail behavior: reminders wait for the
+- **Migration 036 adds the 48-hour reminder and the staff make-up email**, and is
+  recorded as applied in the 2026-10-21 report. Applying it alone changes no mail
+  behavior: reminders wait for the
   `event-reminders` function **and** its Supabase Cron job, and make-up email
   needs the `send-makeup-emails` function. Both are documented (secrets, dry
   run, cron statement) in `docs/EMAIL_SETUP.md` §6b–6c and
   `scripts/migrate/04_functions_config.md` §1–2. A frontend that shows the
   make-up button must be deployed **after** 036 is applied.
-- `docs/CUTOVER.md` and `scripts/migrate/run_all.sh` (Phase 4).
-- The new Vercel project for this frontend.
+- `docs/CUTOVER.md` and `scripts/migrate/run_all.sh` (Phase 4) do not exist in the
+  repository.
+- The Vercel project exists and deploys from `main` (recorded 2026-10-21 in commit
+  `4fdc3f4` and [`FEATURE_IMPLEMENTATION_REPORT.md`](FEATURE_IMPLEMENTATION_REPORT.md) §6b).

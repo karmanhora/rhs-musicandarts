@@ -1,7 +1,8 @@
 # scripts/migrate — RHS Band → RHS Music migration pipeline
 
 Idempotent, re-runnable clone of the live RHS Band Supabase project into a new
-project. Documented plan: `docs/PLATFORM_PLAN.md` (Phase 1 = §9). Scripts never
+project. Documented plan: `docs/PLATFORM_PLAN.md` (Phase 1 = §9 — **historical**;
+the Clerk import step it describes no longer exists). Scripts never
 print, log, or commit credentials — everything comes from environment variables
 in the **gitignored** repo-root `.env`.
 
@@ -18,8 +19,22 @@ store; `profiles.auth_user_id` is how the app links an account to a person
 | `01_dump.sh` | OLD (live) | no — dumps only | roles (idempotent SQL guards), schema, data (COPY), migration history, baseline counts + attendance fingerprint → `out/` |
 | `02_restore.sh` | NEW | **yes** | restore roles → schema → data (`session_replication_role = replica` so triggers don't fire) |
 | `03_auth_storage.sh` | OLD + NEW | only with `--apply` | verify/reapply `handle_new_user` + avatar bucket/policies; verify `auth.users`/`identities`; copy avatar objects via Storage API |
+| `06_apply_migrations.sh` | NEW | **yes** (except `--dry-run`) | apply `supabase/migrations/*.sql` in filename order; migration 018 retires `handle_new_user` |
 | `04_functions_config.md` | NEW | manual | edge functions, secrets, cron, Supabase Auth URLs/templates + Vercel checklist |
 | `05_verify.sh` | OLD + NEW | no (suite rolls back) | row counts, auth sanity, attendance fingerprint + spot checks, RLS everywhere, `tests/security_verification.sql` |
+
+> **Pipeline order and `handle_new_user` (2026-10-24).** Run the steps in **table
+> order** (execution order, not filename order): **01 → 02 → 03 → 06 → 04 → 05**.
+> `02_restore.sh` and `03_auth_storage.sh --apply` create the legacy
+> `on_auth_user_created` trigger; `06_apply_migrations.sh` applies 018, which drops
+> it. Do not run `03_auth_storage.sh --apply` after 06: on a migrated project the
+> trigger reports MISSING by design, and `--apply` "repairs" it by recreating the
+> trigger. `05_verify.sh` does not catch that — once `app_settings` is gone it
+> treats the missing trigger as expected. If 03 has already been run with `--apply`
+> after 06, **stop and ask the owner**: do not execute any SQL to remove the
+> trigger yourself. Removing it needs the owner's explicit approval, and a signup
+> trigger must never remain on a migrated project — re-adding it would create a
+> second profile for every new account ([docs/DEV.md §4](../../docs/DEV.md)).
 
 `out/` is gitignored and created with `umask 077` — it contains password hashes
 (`data.sql`, `auth_data.sql`). Never commit or share it.

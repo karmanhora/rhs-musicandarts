@@ -1,6 +1,17 @@
 # RHS Music Platform — Phase 0 Audit & Platform Plan
 
-**Status:** **Approved 2026-10-05** with one architectural change: **Clerk replaces Supabase Auth** for sign-in/sign-up (full design in §13). Q1/Q2 (§12) accepted as proposed.
+**Status (current, 2026-10-24):** **Supabase Auth is the only authentication
+system.** The Clerk change approved on 2026-10-05 was reversed on 2026-10-09:
+Clerk was built, then removed. Every Clerk reference in this document — including
+the §2–§8 tables, §9's `03b` import step, §10's estimate, §12 decision 3 and all
+of §13 — is **historical**.
+None of it is executable. `@clerk/*`, `profiles.clerk_id`, the `/_clerk` rewrite
+and the Clerk environment variables must not return without the owner's explicit
+approval ([AUTH_MIGRATION.md](AUTH_MIGRATION.md), [DEV.md §4](DEV.md)).
+
+**Historical status line, preserved as written on 2026-10-05:** "**Approved
+2026-10-05** with one architectural change: **Clerk replaces Supabase Auth** for
+sign-in/sign-up (full design in §13). Q1/Q2 (§12) accepted as proposed."
 
 > **Reversed 2026-10-09 — Supabase Auth is the identity provider again.**
 > §13 was built, then removed: Clerk brought a third-party script, a proxy
@@ -198,6 +209,11 @@ create table public.calendar_sources (
 
 **`profiles` after migration:** `id` (uuid PK — every FK in the schema keeps working), `clerk_id text unique not null` (Clerk `user_…` id, §13), `full_name, display_name, avatar_url, must_change_password, deactivated, created_at` — pure person-level identity.
 
+> **Historical column list.** `clerk_id` was replaced by `profiles.auth_user_id` in
+> migration 021 and dropped on 2026-10-16. The current identity column is
+> `auth_user_id`, resolved by `public.current_profile_id()`; see
+> [AUTH_MIGRATION.md](AUTH_MIGRATION.md) §2.
+
 ### Acceptance criterion — "add a program = data only"
 
 > **Band-only scope (owner directive, 2026-10-05):** RHS **Band** is the only program. The block below records the *shape* a future program insert would take so the schema stays honest about it — no second program is created, seeded, shipped or UI-surfaced, and `public.ensembles` keeps exactly one row (`band`). The `new_ensemble_data_only` test suite was removed rather than maintained.
@@ -319,11 +335,16 @@ Port `tests/security_verification.sql` → `supabase/tests/security_verification
    **Update, October 2026:** the owner has since repositioned the product as the umbrella site above — *the Music and Arts Program, containing each music program's attendance tracker*. Band is still the only program that exists (one `ensembles` row), so nothing about the schema changed: the interface now speaks "program", the shell carries the umbrella and a program switcher, and `join_program()` (020) is what makes adding orchestra a data change rather than a code change.
 3. **`tests/backfill_verification.sql`** — orphan checks, role/section preservation, join-code migration, event counts per ensemble.
 
-All suites: rolled back, self-checking (`FAIL: <id>` on first violation), runnable via `psql -f` in `05_verify.sh`. Personas carry `clerk_id` values and authenticate by setting `request.jwt.claims.sub` to the `clerk_id` — the exact token shape Clerk session tokens present to PostgREST (§13).
+All suites: rolled back, self-checking (`FAIL: <id>` on first violation), runnable via `psql -f` in `05_verify.sh`. Personas carry `clerk_id` values and authenticate by setting `request.jwt.claims.sub` to the `clerk_id` — the exact token shape Clerk session tokens present to PostgREST (§13). *(Historical: the suites now authenticate through `auth_user_id`; see [AUTH_MIGRATION.md](AUTH_MIGRATION.md) §2.)*
 
 ---
 
 ## 9. Migration pipeline (Phase 1 deliverable)
+
+> **Historical (2026-10-05).** `03b_clerk_import.sh` was written but never run, and
+> no such script exists in the repository today. Do not create or run it, and do
+> not recreate `handle_new_user`: migration 018 retired both, and a signup trigger
+> creates a second profile for every new account ([DEV.md §4](DEV.md)).
 
 `scripts/migrate/` — bash, idempotent, documented, dry-run by default:
 
@@ -360,7 +381,7 @@ All suites: rolled back, self-checking (`FAIL: <id>` on first violation), runnab
 - Per-ensemble email template branding and per-ensemble PWA manifests (single set now).
 - Per-ensemble event-type catalogs (a generic catalog + Band labels now).
 - Push notifications / web-push (in-app notification bell only, as today).
-- Clerk extras: Organizations as a program model (our `ensembles` table stays the source of truth), MFA, social/SSO providers, custom-branded auth emails (needs Clerk Pro; v1 ships Clerk's default templates), account deletion self-service.
+- Clerk extras (historical — Clerk is removed; MFA, SSO and self-service deletion remain deferred): Organizations as a program model (our `ensembles` table stays the source of truth), MFA, social/SSO providers, custom-branded auth emails (needs Clerk Pro; v1 ships Clerk's default templates), account deletion self-service.
 
 ---
 
@@ -368,13 +389,17 @@ All suites: rolled back, self-checking (`FAIL: <id>` on first violation), runnab
 
 1. **Analytics access:** director-only per ensemble (+ program admins). Kept — no weakening of current guarantees; tests port unchanged.
 2. **Roster visibility:** members see co-members of their ensembles (names, avatars, section); sensitive fields stay RPC-gated. Students in one ensemble see only that roster.
-3. **Auth:** Clerk replaces Supabase Auth (§13).
+3. **Auth (historical, reversed 2026-10-09):** Clerk replaces Supabase Auth (§13). **Current decision:** Supabase Auth is the only identity system — see [AUTH_MIGRATION.md](AUTH_MIGRATION.md).
 
-**One assumption, correct me if wrong:** "use Clerk for the sign in and sign up page" is implemented as *Clerk is the auth system* (users, passwords and sessions live in Clerk; Clerk session tokens authenticate against Supabase RLS) — not merely Clerk-styled forms over Supabase Auth, which Clerk components cannot do.
+**Historical assumption (adopted 2026-10-05, reversed 2026-10-09):** "use Clerk for the sign in and sign up page" is implemented as *Clerk is the auth system* (users, passwords and sessions live in Clerk; Clerk session tokens authenticate against Supabase RLS) — not merely Clerk-styled forms over Supabase Auth, which Clerk components cannot do.
 
 ---
 
-## 13. Clerk authentication integration (approved change — 2026-10-05)
+## 13. Clerk authentication integration (approved 2026-10-05; HISTORICAL — built, then removed 2026-10-09)
+
+> **Historical design, not a build specification.** Everything in §13 describes the
+> Clerk integration that shipped and was then removed. Do not implement, restore or
+> re-deploy any step below without the owner's explicit approval.
 
 > **Removed 2026-10-09** — see the note at the top and
 > [docs/AUTH_MIGRATION.md](AUTH_MIGRATION.md). Kept as the record of the decision.
