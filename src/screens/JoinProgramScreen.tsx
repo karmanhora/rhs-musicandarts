@@ -1,22 +1,16 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Check, ChevronRight, KeyRound, LogOut, Music, ShieldCheck, Users } from "lucide-react";
+import { KeyRound, LogOut, Music, ShieldCheck, Users } from "lucide-react";
 import {
   Alert,
   Button,
   Card,
-  EmptyState,
   Field,
   Input,
-  List,
   PageHeader,
-  Row,
-  SectionTitle,
-  Skeleton,
   useToast,
 } from "../components/ui";
-import { joinProgram, listActivePrograms } from "../lib/rpc";
-import type { ProgramOption } from "../lib/types";
+import { joinProgramByCode } from "../lib/rpc";
 import { usePrograms } from "../hooks/usePrograms";
 import { useAuth } from "../hooks/useAuth";
 import { APP_NAME, ORG_NAME, ROLE_LABEL } from "../lib/constants";
@@ -31,10 +25,11 @@ import { APP_NAME, ORG_NAME, ROLE_LABEL } from "../lib/constants";
  *   * as the `/join` route inside the shell, reached from the program switcher,
  *     from Profile, and from the roster screen's empty state.
  *
- * The code is checked by `join_program()` on the server — rate-limited; this
- * screen only collects it. When the person has no profile yet that same call
- * creates one, which is why their name is asked for here rather than guessed
- * from the account.
+ * The code is checked by `join_program_by_code()` on the server — rate-limited;
+ * this screen only collects it. The code also names the program, so there is no
+ * picker: typing the code is the whole choice. When the person has no profile
+ * yet that same call creates one, which is why their name is asked for here
+ * rather than guessed from the account.
  *
  * Joining somebody else's program is not the only way in: a teacher with nobody
  * to ask can start their own from here (`/new-program`). That option is shown
@@ -46,47 +41,18 @@ export function JoinProgramScreen({ standalone = false }: { standalone?: boolean
   const { toast } = useToast();
   const navigate = useNavigate();
 
-  const [programs, setPrograms] = useState<ProgramOption[] | null>(null);
-  const [selected, setSelected] = useState<string | null>(null);
   const [code, setCode] = useState("");
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [listError, setListError] = useState<string | null>(null);
 
   /** No profile yet? This call creates it, so it needs a name to store. */
   const needsName = !app.profile;
 
-  const load = useCallback(async () => {
-    const { rows, error: rpcError, message } = await listActivePrograms();
-    if (rpcError) setListError(rpcError.message);
-    else if (message) setListError(message);
-    setPrograms(rows);
-    // One program on the whole site? Choose it for them.
-    if (rows.length === 1) setSelected(rows[0]!.slug);
-  }, []);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
-
-  const chosen = useMemo(
-    () => (programs ?? []).find((p) => p.slug === selected) ?? null,
-    [programs, selected]
-  );
-  const needsCode = chosen?.has_join_code !== false;
-
-  const canSubmit =
-    Boolean(chosen) &&
-    (!needsCode || code.trim().length > 0) &&
-    (!needsName || name.trim().length > 0);
+  const canSubmit = code.trim().length > 0 && (!needsName || name.trim().length > 0);
 
   async function submit() {
-    if (!chosen) {
-      setError("Pick a program first.");
-      return;
-    }
-    if (needsCode && !code.trim()) {
+    if (!code.trim()) {
       setError("Type the join code your director gave you.");
       return;
     }
@@ -97,7 +63,7 @@ export function JoinProgramScreen({ standalone = false }: { standalone?: boolean
 
     setBusy(true);
     setError(null);
-    const { result, error: rpcError } = await joinProgram(chosen.slug, code.trim(), name.trim());
+    const { result, error: rpcError } = await joinProgramByCode(code.trim(), name.trim());
 
     if (rpcError) {
       setBusy(false);
@@ -114,7 +80,7 @@ export function JoinProgramScreen({ standalone = false }: { standalone?: boolean
     // and land in *that* one, so joining a second program actually switches to it.
     await app.refresh(result.program_id ?? undefined);
     setBusy(false);
-    toast.success(result.message ?? `You're in ${chosen.name}.`);
+    toast.success(result.message ?? `You're in ${result.program_name ?? "your program"}.`);
     if (!standalone) navigate("/");
   }
 
@@ -131,7 +97,7 @@ export function JoinProgramScreen({ standalone = false }: { standalone?: boolean
       <PageHeader
         kicker={[ROLE_LABEL.student, auth.email].filter(Boolean).join(" · ")}
         title="Join a program"
-        note="Your director gives you a join code. It puts you on that program's roster — its rehearsals, its calendar and your own attendance."
+        note="Type the code your director gave you. It lands you on that program's roster — its rehearsals, its calendar and your own attendance. There is nothing to pick first."
       />
 
       {/* Point teachers at the teacher door — which, since migration 035, needs
@@ -148,91 +114,41 @@ export function JoinProgramScreen({ standalone = false }: { standalone?: boolean
         </Card>
       ) : null}
 
-      {listError ? <Alert tone="warn">{listError}</Alert> : null}
+      <Field
+        label="Join code"
+        hint="Ask your director — each program has its own code, and the code picks the program for you."
+      >
+        <Input
+          value={code}
+          onChange={(e) => setCode(e.target.value.toUpperCase().slice(0, 12))}
+          placeholder="ABCD2345"
+          autoCapitalize="characters"
+          autoComplete="off"
+          spellCheck={false}
+          className="text-center font-mono text-xl tracking-[0.25em]"
+        />
+      </Field>
 
-      {programs === null ? (
-        <Skeleton className="h-40 w-full" />
-      ) : programs.length === 0 ? (
-        <div className="cue-card rounded-[var(--radius-panel)]">
-          <EmptyState
-            icon={<Music className="h-4 w-4" />}
-            title="No programs yet"
-            body={
-              app.canCreateProgram
-                ? "Nobody has started one yet — you can be the first."
-                : "No programs are available yet. Ask a teacher or director to get one started."
-            }
+      {needsName ? (
+        <Field label="Your name" hint="Your director sees this on the roster.">
+          <Input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Alex Rivera"
+            autoComplete="name"
           />
-        </div>
-      ) : (
-        <>
-          <div className="space-y-3">
-            <SectionTitle>Which program?</SectionTitle>
-            <List>
-              {programs.map((p) => (
-                <Row
-                  key={p.slug}
-                  icon={<Music className="h-4 w-4" />}
-                  title={p.name}
-                  subtitle={p.has_join_code ? "Needs a join code" : "No code needed"}
-                  trailing={
-                    selected === p.slug ? (
-                      <Check aria-hidden="true" className="h-4 w-4 shrink-0 text-[var(--cue-green)]" />
-                    ) : (
-                      <ChevronRight
-                        aria-hidden="true"
-                        className="h-4 w-4 shrink-0 text-[var(--cue-subtle)]"
-                      />
-                    )
-                  }
-                  onClick={() => {
-                    setSelected(p.slug);
-                    setError(null);
-                  }}
-                />
-              ))}
-            </List>
-          </div>
+        </Field>
+      ) : null}
 
-          {needsName ? (
-            <Field label="Your name" hint="Your director sees this on the roster.">
-              <Input
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="Alex Rivera"
-                autoComplete="name"
-              />
-            </Field>
-          ) : null}
+      <Button block size="lg" loading={busy} disabled={!canSubmit} onClick={() => void submit()}>
+        Join
+      </Button>
 
-          {needsCode ? (
-            <Field
-              label="Join code"
-              hint="Ask your director — it is the same for everyone in that program."
-            >
-              <Input
-                value={code}
-                onChange={(e) => setCode(e.target.value.toUpperCase().slice(0, 12))}
-                placeholder="ABCD2345"
-                autoCapitalize="characters"
-                autoComplete="off"
-                spellCheck={false}
-                className="text-center font-mono text-xl tracking-[0.25em]"
-              />
-            </Field>
-          ) : null}
-
-          <Button block size="lg" loading={busy} disabled={!canSubmit} onClick={() => void submit()}>
-            Join
-          </Button>
-
-          {!standalone ? (
-            <Button block variant="ghost" onClick={() => navigate(-1)}>
-              Not now
-            </Button>
-          ) : null}
-        </>
-      )}
+      {!standalone ? (
+        <Button block variant="ghost" onClick={() => navigate(-1)}>
+          Not now
+        </Button>
+      ) : null}
 
       {app.mayStartProgram ? (
         <Card className="space-y-3">

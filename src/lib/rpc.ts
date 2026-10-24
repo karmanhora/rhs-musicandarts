@@ -10,7 +10,6 @@ import type {
   MakeupEmailSendResponse,
   MyAbsenceRequestRow,
   MyAttendanceRow,
-  ProgramOption,
   RoleAuditEntry,
   RpcResult,
   SectionStatRow,
@@ -91,22 +90,14 @@ async function callRpcList<T>(
 // --- Programs (any signed-in person) ----------------------------------------
 
 /**
- * Every active program, so the join screen can offer real names instead of
- * asking somebody to spell a slug. Names and colours are not secret; join codes
- * never appear here — only whether one is set.
+ * Join a program from its code alone. The code names the program, so the person
+ * never picks one first; the server resolves it, then runs the same join rules.
+ * `p_display_name` is only used when the caller has no profile yet (the code is
+ * what proves they may be here; the name is just what to call them).
  */
-export const listActivePrograms = () => callRpcList<ProgramOption>("list_active_programs");
-
-/**
- * Join a program with its code. `p_display_name` is only used when the caller has
- * no profile yet (the code is what proves they may be here; the name is just
- * what to call them). Validated and rate-limited server-side, never in the
- * browser.
- */
-export const joinProgram = (slug: string, code: string, displayName?: string) =>
-  callRpc("join_program", {
-    p_slug: slug,
-    p_code: code,
+export const joinProgramByCode = (code: string, displayName?: string) =>
+  callRpc("join_program_by_code", {
+    p_code: code.trim(),
     p_display_name: displayName?.trim() || null,
   });
 

@@ -18,6 +18,10 @@
 --   JP-8   somebody a director removed cannot let themselves back in with the code
 --   JP-9   list_active_programs() exposes names and never a code
 --   JP-10  the per-IP lockout still bites in this path
+--   JP-11  the code alone names the program — no slug, no picker
+--   JP-12  an unknown code creates nothing and says so
+--   JP-13  anon cannot call the code-only RPC
+--   JP-14  the lockout covers unknown codes too
 --
 -- Runs in one transaction and ROLLS BACK. Personas are authenticated exactly the
 -- way PostgREST sees a Supabase Auth token. On success it prints: JOIN PROGRAM PASSED
@@ -383,7 +387,121 @@ begin
 end $$;
 
 -- ---------------------------------------------------------------------------
--- 10. Teardown
+-- 11. JP-11 — the code alone finds the program
+-- ---------------------------------------------------------------------------
+do $$
+declare
+  v jsonb;
+begin
+  perform set_config('request.jwt.claims', '{"sub":"join-code-only","role":"authenticated"}', true);
+  set role authenticated;
+
+  -- Padded and lower-case: the person only has the code to go on.
+  v := public.join_program_by_code('  joinb9  ', 'Case Only', 'jp-ip-code-1');
+  perform public.t_assert(v ->> 'ok' = 'true',
+    'JP-11 a code-only join was refused: ' || coalesce(v ->> 'message', '?'));
+  perform public.t_assert(v ->> 'program_name' = 'TST Join B',
+    'JP-11b the code joined the wrong program');
+  perform public.t_assert(v ->> 'existing' = 'false',
+    'JP-11c a first code-only join reported an existing membership');
+  perform public.t_assert(
+    (select count(*) from public.profiles where auth_user_id = 'join-code-only') = 1,
+    'JP-11d the profile was not created exactly once');
+  perform public.t_assert(
+    (select count(*) from public.memberships m
+       join public.profiles p on p.id = m.user_id
+      where p.auth_user_id = 'join-code-only'
+        and m.ensemble_id = 'bbbbbbbb-0000-4000-8000-0000000000c1'
+        and m.active) = 1,
+    'JP-11e the code did not put them on that program''s roster');
+end $$;
+reset role;
+select set_config('request.jwt.claims', '{}', true);
+
+-- ---------------------------------------------------------------------------
+-- 12. JP-12 — an unknown code creates nothing
+-- ---------------------------------------------------------------------------
+do $$
+declare
+  v jsonb;
+begin
+  perform set_config('request.jwt.claims', '{"sub":"join-code-none","role":"authenticated"}', true);
+  set role authenticated;
+
+  v := public.join_program_by_code('ZZZZ9999', 'Nobody Here', 'jp-ip-code-2');
+  perform public.t_assert(v ->> 'ok' = 'false',
+    'JP-12 an unknown code was accepted');
+  perform public.t_assert(coalesce(v ->> 'message', '') <> '',
+    'JP-12b the refusal came with no message to show the person');
+end $$;
+reset role;
+select set_config('request.jwt.claims', '{}', true);
+
+do $$
+begin
+  perform public.t_assert(
+    not exists (select 1 from public.profiles where auth_user_id = 'join-code-none'),
+    'JP-12c an unknown code created a profile');
+end $$;
+
+-- ---------------------------------------------------------------------------
+-- 13. JP-13 — anon cannot call the code-only RPC
+-- ---------------------------------------------------------------------------
+do $$
+declare
+  v_state text;
+begin
+  set role anon;
+  begin
+    perform public.join_program_by_code('JOINA9');
+    v_state := 'CALLED';
+  exception
+    when others then
+      v_state := sqlstate;
+  end;
+  reset role;
+
+  if v_state <> '42501' then
+    raise exception 'FAIL: JP-13 anon could call join_program_by_code (sqlstate %)', v_state;
+  end if;
+end $$;
+
+-- ---------------------------------------------------------------------------
+-- 14. JP-14 — guessing codes stays throttled
+-- ---------------------------------------------------------------------------
+do $$
+declare
+  v jsonb;
+  i integer;
+begin
+  perform set_config('request.jwt.claims', '{"sub":"join-code-brute","role":"authenticated"}', true);
+  set role authenticated;
+
+  for i in 1..5 loop
+    v := public.join_program_by_code('NOPE' || i, 'Brute Code', 'jp-ip-code-brute');
+  end loop;
+
+  -- The right code, from an address that has just guessed five times.
+  v := public.join_program_by_code('JOINA9', 'Brute Code', 'jp-ip-code-brute');
+  perform public.t_assert(v ->> 'ok' = 'false',
+    'JP-14 the code-only lockout did not apply');
+  perform public.t_assert(
+    coalesce(v ->> 'message', '') ilike '%too many%',
+    'JP-14b the lockout refusal did not say what happened: ' || coalesce(v ->> 'message', '?')
+  );
+end $$;
+reset role;
+select set_config('request.jwt.claims', '{}', true);
+
+do $$
+begin
+  perform public.t_assert(
+    not exists (select 1 from public.profiles where auth_user_id = 'join-code-brute'),
+    'JP-14c a throttled caller still got a profile');
+end $$;
+
+-- ---------------------------------------------------------------------------
+-- 15. Teardown
 -- ---------------------------------------------------------------------------
 rollback;
 
