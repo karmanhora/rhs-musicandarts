@@ -58,6 +58,19 @@ deployment stay untouched.
       the announcement cron job in §2 sends it as `x-event-announcement-secret`).
       The function reuses `RESEND_API_KEY`, `RESEND_FROM` and `PUBLIC_APP_URL`;
       `ANNOUNCEMENT_FROM_NAME` is optional and defaults to `RHS Music & Arts`.
+- [x] **Done 2026-10-24** — after applying migration
+      `20261024223123_absence_request_emails.sql`, deploy the absence-review
+      sender:
+      `supabase functions deploy absence-request-emails --project-ref <NEW_PROJECT_REF> --no-verify-jwt --use-api`.
+      Server-to-server only (no CORS): it refuses every call without the
+      `x-absence-request-email-secret` header or the exact service-role bearer.
+      `[functions.absence-request-emails] verify_jwt = false` in
+      `supabase/config.toml`.
+- [x] **Done 2026-10-24** — add `ABSENCE_REQUEST_EMAIL_SECRET` to the function
+      secrets (long random value; the absence-email cron job in §2 sends it as
+      `x-absence-request-email-secret`). The function reuses `RESEND_API_KEY`,
+      `RESEND_FROM` and `PUBLIC_APP_URL`; `ABSENCE_FROM_NAME` is optional and
+      defaults to `RHS Music & Arts`.
 - [ ] Note: `sync_google_calendar` currently runs with `verify_jwt = false` and
       accepts any signed-in user. Tightening to staff-only is **Phase 3 work**
       (docs/PLATFORM_PLAN.md §6 #4) — known and accepted for the clone window.
@@ -218,6 +231,51 @@ deployment stay untouched.
       `public.event_announcement_deliveries` with `status = 'sent'`. A second run
       must send nothing. Not done on 2026-10-20 to avoid mailing the roster as a
       test.
+
+### Absence-request review emails (migration 20261024223123)
+
+- [x] **Done 2026-10-24** — store the absence-email secret in **Vault** (never in
+      `cron.job` plain text):
+
+      ```sql
+      select vault.create_secret('<ABSENCE_REQUEST_EMAIL_SECRET>', 'absence_request_email_secret',
+        'x-absence-request-email-secret header for the absence-request-emails cron job');
+      ```
+
+- [x] **Done 2026-10-24** (`absence-request-emails`, job 3) — schedule it **every
+      5 minutes**, so a request reaches the reviewer within a few minutes of
+      being submitted. The queue only holds requests that are
+      still pending and after the cutover, so an existing backlog is never
+      mailed:
+
+      ```sql
+      select cron.schedule('absence-request-emails', '*/5 * * * *', $$
+        select net.http_post(
+          url := 'https://<NEW_PROJECT_REF>.supabase.co/functions/v1/absence-request-emails',
+          headers := jsonb_build_object(
+            'x-absence-request-email-secret',
+            (select decrypted_secret from vault.decrypted_secrets
+              where name = 'absence_request_email_secret'),
+            'Content-Type', 'application/json'),
+          body := '{}'::jsonb);
+      $$);
+      ```
+
+- [x] **Done 2026-10-24** — before scheduling, run it once by hand with
+      `{"dry_run": true}` and read the JSON. Nothing is sent; it names every due
+      reviewer, request and subject:
+
+      ```bash
+      curl -sS -X POST "https://<NEW_PROJECT_REF>.supabase.co/functions/v1/absence-request-emails" \
+        -H "Content-Type: application/json" \
+        -H "x-absence-request-email-secret: <ABSENCE_REQUEST_EMAIL_SECRET>" \
+        -d '{"dry_run": true}'
+      ```
+
+- [ ] Still to verify with real data: submit one real absence request in the
+      app and confirm exactly one row per reviewer in
+      `public.absence_request_email_deliveries` with `status = 'sent'`. A second
+      run must send nothing.
 
 - [ ] **Vercel Cron is not used here.** The deployment in `vercel.json` is a
       static SPA rewrite: there is no `api/` directory, no build step on Vercel

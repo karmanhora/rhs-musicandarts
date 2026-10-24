@@ -213,9 +213,10 @@ migration that depends on it.
 ## 6. What this does not cover
 
 The in-app notification bell — the `notifications` table and its SQL triggers —
-stays in-app. §6a covers the one app email that leaves it. Emailing the bell's
-*other* trigger (a check-in opening) is still not built: a check-in is live for
-minutes, so it belongs in the bell, not in a mailbox.
+stays in-app, but two of its triggers now also reach a mailbox: a new event
+(§6d) and a student's absence request (§6e). Emailing the bell's remaining
+trigger (a check-in opening) is still not built: a check-in is live for minutes,
+so it belongs in the bell, not in a mailbox.
 
 ## 6a. App email: the upcoming-events digest
 
@@ -480,6 +481,69 @@ the app.
   (job 2, every 5 minutes) is active. A dry run returned `ok: true` with
   `recipients: 0`. No test event has been added to production, so the first real
   send will be the first event someone adds after this cutover.
+
+## 6e. App email: a student asked to be excused
+
+Migration `20261024223123_absence_request_emails.sql` + the
+`absence-request-emails` edge function add the fifth app email: **one message
+per request per reviewer, sent shortly after a student submits an absence
+request.** It uses the same Resend API transport as the other app mail (§6a),
+not the auth SMTP relay. The in-app bell already announced the request; this is
+the same event reaching someone who may not have the app open.
+
+- **Who is due** — `public.due_absence_request_emails(now)` returns active
+  members of the request's program who are active, not deactivated, have a
+  confirmed address, are not the student asking, and hold
+  `absence.review` (`user_has_permission`, so program admins and any custom role
+  a director deliberately granted the review queue are included). The request
+  must still be **pending**, in an active program, on a non-archived event, and
+  after the cutover.
+- **The cutover** — `absence_email_settings.enabled_since` is written when the
+  migration is applied. A request that already existed then is never mailed, so
+  deploying this does not mail a backlog. A seven-day lookback also keeps a long
+  outage from mailing a stale request.
+- **Not the student's subscription switch** — `memberships.email_upcoming_events`
+  governs the *upcoming-events* digest. A request waiting for a decision is
+  operational mail to a reviewer, like the post-event make-up email, so that
+  student preference does not gate it.
+- **No duplicates** — `claim_absence_request_email()` inserts the unique
+  `(request_id, user_id)` delivery row **before** the send, so overlapping runs
+  cannot both mail one reviewer. It re-checks the request state, the roster, the
+  address and the capability, so a decision, withdrawal, removal or missed
+  confirmation between the queue read and the send is respected.
+  `complete_absence_request_email()` records `sent` or `failed` with the attempt
+  count; failures retry on later runs, up to **3 attempts**. The Resend
+  `Idempotency-Key` is `absence-request:<request>:<reviewer>`.
+- **Decisions are not emailed** — approving or denying sends no message. The
+  student's bell already reports the outcome; adding a decision email is a
+  separate change.
+- **Secrets** — `ABSENCE_REQUEST_EMAIL_SECRET` (the cron header), plus the
+  existing `RESEND_API_KEY`, `RESEND_FROM` and `PUBLIC_APP_URL`;
+  `ABSENCE_FROM_NAME` is optional and defaults to “RHS Music & Arts”. The
+  function refuses every call without the shared secret or the exact
+  service-role bearer.
+- **The schedule** — Supabase Cron, every 5 minutes. The SQL is in
+  `scripts/migrate/04_functions_config.md` §2.
+- **Testing it honestly** — `supabase/tests/absence_request_emails.sql` covers
+  the database rules (who is due, the exclusions, the claim, retries, the
+  attempt cap, a stale claim and the client-role grants), and
+  `node scripts/dev/check_absence_request_emails.mjs` runs the real function
+  with no network at all: secret refusal, dry run, the claim-before-send order,
+  the rendered subject/text/HTML on both sides of a daylight-saving change,
+  escaping, a request decided after the claim, and a recorded Resend failure.
+  A live dry run is
+  `{"dry_run": true}` with the `x-absence-request-email-secret` header: it names
+  every due reviewer, request and rendered subject, and sends nothing. A real run
+  ignores `now`.
+- **Current state (2026-10-24)** — migration `20261024223123` is applied (cutover
+  `enabled_since` 2026-10-24 22:31 UTC, so no existing request is queued),
+  `absence-request-emails` is deployed without platform JWT verification,
+  `ABSENCE_REQUEST_EMAIL_SECRET` is set as a function secret, the Vault secret
+  `absence_request_email_secret` exists, and the `absence-request-emails` cron
+  job (job 3, every 5 minutes) is active. A dry run returned `ok: true` with
+  `recipients: 0`, and an unauthenticated call is refused with `401`. No request
+  has been submitted since the cutover, so the first real send will be the first
+  request a student submits.
 
 ## 7. Never
 

@@ -84,6 +84,13 @@ verify_jwt = false
 [functions.event-announcements]
 verify_jwt = false
 
+# Scheduled, server-to-server only. Called by Supabase Cron with the
+# `x-absence-request-email-secret` header (ABSENCE_REQUEST_EMAIL_SECRET). It
+# mails a program's reviewers when a student asks to be excused, so no browser
+# may trigger a run.
+[functions.absence-request-emails]
+verify_jwt = false
+
 # Browser-invoked by staff (the make-up composer). The platform verifies the
 # JWT, and the function verifies the account and its program staff role again
 # before reading attendance or calling Resend. Default is true; kept explicit so
