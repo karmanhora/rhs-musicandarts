@@ -14,7 +14,8 @@
 --   E  another program's director can neither list nor decide
 --   F  a director sees the pending request with the student and reason
 --   G  approval records the reviewer and response, notifies the student, and
---      writes NO attendance record
+--      marks the student excused on that event's roll, with an audit row that
+--      says the excuse came from an approved request
 --   H  a decided request blocks a new one until a reviewer allows resubmission
 --   I  a pending request can be withdrawn by its owner only
 --   J  reasons are bounded and required
@@ -22,6 +23,8 @@
 --   L  a student cannot read another student's request
 --   M  an explicitly granted reviewer (custom role) can decide
 --   N  withdrawn and decided requests cannot be decided again
+--   O  an approval never overwrites a recorded mark, and a denial writes no
+--      attendance at all
 --
 -- On success: ABSENCE REQUESTS PASSED
 -- ============================================================================
@@ -79,7 +82,9 @@ values
   ('53000000-0000-4000-8000-000000000104', '53000000-0000-4000-8000-0000000000a1',
    'AB Already Happened', 'Rehearsal', 'rehearsal', now() - interval '1 day', 'toggle', 'required', false),
   ('53000000-0000-4000-8000-000000000105', '53000000-0000-4000-8000-0000000000a1',
-   'AB Archived Future', 'Rehearsal', 'rehearsal', now() + interval '2 days', 'toggle', 'required', true);
+   'AB Archived Future', 'Rehearsal', 'rehearsal', now() + interval '2 days', 'toggle', 'required', true),
+  ('53000000-0000-4000-8000-000000000106', '53000000-0000-4000-8000-0000000000a1',
+   'AB Denial Event', 'Rehearsal', 'rehearsal', now() + interval '5 days', 'toggle', 'required', false);
 
 insert into public.memberships (user_id, ensemble_id, section_id, roles, active) values
   ('53000000-0000-4000-8000-000000000001', '53000000-0000-4000-8000-0000000000a1', null, '{director}', true),
@@ -259,11 +264,33 @@ begin
     'G the decision records the reviewer, time and response'
   );
 
-  -- Approval is a decision, not a mark.
+  -- Approval is now also a mark: the roll shows the student excused.
+  perform public.ab_assert(
+    (select status = 'excused'
+            and attended = false
+            and is_late = false
+            and excuse_reason = 'Approved absence request'
+            and marked_by = '53000000-0000-4000-8000-000000000001'
+       from public.attendance_records
+      where event_id = '53000000-0000-4000-8000-000000000101'
+        and student_id = '53000000-0000-4000-8000-000000000004'),
+    'G approval writes an excused mark, signed by the reviewer'
+  );
   perform public.ab_assert(
     (select count(*) from public.attendance_records
-      where event_id = '53000000-0000-4000-8000-000000000101') = 0,
-    'G approval wrote no attendance record'
+      where event_id = '53000000-0000-4000-8000-000000000101') = 1,
+    'G approval writes exactly one attendance record'
+  );
+  perform public.ab_assert(
+    (select source = 'absence_request'
+            and action = 'marked'
+            and old_status is null
+            and new_status = 'excused'
+            and actor_id = '53000000-0000-4000-8000-000000000001'
+       from public.attendance_audit
+      where event_id = '53000000-0000-4000-8000-000000000101'
+        and student_id = '53000000-0000-4000-8000-000000000004'),
+    'G the audit trail attributes the excuse to the approved request'
   );
 
   perform public.ab_assert(
@@ -499,6 +526,89 @@ begin
       where user_id = '53000000-0000-4000-8000-000000000005'
         and type = 'absence_decision') = 1,
     'M the student is told about the denial'
+  );
+end
+$$;
+
+-- ---------------------------------------------------------------------------
+-- O. A recorded mark wins, and a denial writes nothing
+-- ---------------------------------------------------------------------------
+do $$
+begin
+  -- Student two asks to miss the optional event, and staff have already marked
+  -- her present for it.
+  perform set_config('request.jwt.claims', '{"sub":"ab-stu2","role":"authenticated"}', true);
+  set role authenticated;
+  perform public.ab_assert(
+    (public.create_absence_request('53000000-0000-4000-8000-000000000102',
+      'Family event that evening.') ->> 'ok') = 'true',
+    'O a second student can ask about a different event');
+  reset role;
+  perform set_config('request.jwt.claims', '{}', true);
+
+  insert into public.attendance_records
+    (event_id, student_id, attended, checked_in_at, status, excuse_reason, is_late, marked_by)
+  values
+    ('53000000-0000-4000-8000-000000000102', '53000000-0000-4000-8000-000000000005',
+     true, now(), 'present', '', false, '53000000-0000-4000-8000-000000000001');
+
+  perform set_config('request.jwt.claims', '{"sub":"ab-dir","role":"authenticated"}', true);
+  set role authenticated;
+  perform public.ab_assert(
+    (public.decide_absence_request(
+       (select id from public.absence_requests
+         where event_id = '53000000-0000-4000-8000-000000000102'
+           and student_id = '53000000-0000-4000-8000-000000000005'),
+       'approved', 'Approved, but she was there.') ->> 'roll') = 'kept',
+    'O the approval reports that the recorded mark was kept');
+
+  -- A denial, with no record to protect.
+  reset role;
+  perform set_config('request.jwt.claims', '{"sub":"ab-stu1","role":"authenticated"}', true);
+  set role authenticated;
+  perform public.ab_assert(
+    (public.create_absence_request('53000000-0000-4000-8000-000000000106',
+      'Asking about the denial path.') ->> 'ok') = 'true',
+    'O a student can ask about a second event');
+  reset role;
+  perform set_config('request.jwt.claims', '{"sub":"ab-dir","role":"authenticated"}', true);
+  set role authenticated;
+  perform public.ab_assert(
+    (public.decide_absence_request(
+       (select id from public.absence_requests
+         where event_id = '53000000-0000-4000-8000-000000000106'
+           and student_id = '53000000-0000-4000-8000-000000000004'),
+       'denied', 'We need the full section.') ->> 'ok') = 'true',
+    'O the director denies');
+  reset role;
+  perform set_config('request.jwt.claims', '{}', true);
+
+  perform public.ab_assert(
+    (select status = 'present'
+            and marked_by = '53000000-0000-4000-8000-000000000001'
+       from public.attendance_records
+      where event_id = '53000000-0000-4000-8000-000000000102'
+        and student_id = '53000000-0000-4000-8000-000000000005'),
+    'O an approval never overwrites a recorded present mark'
+  );
+  perform public.ab_assert(
+    not exists (
+      select 1 from public.attendance_audit
+       where event_id = '53000000-0000-4000-8000-000000000102'
+         and source = 'absence_request'
+    ),
+    'O no excused change is recorded where the roll already said present'
+  );
+  perform public.ab_assert(
+    (select count(*) from public.attendance_records
+      where event_id = '53000000-0000-4000-8000-000000000106') = 0,
+    'O a denial writes no attendance record'
+  );
+  perform public.ab_assert(
+    (select status = 'denied' from public.absence_requests
+      where event_id = '53000000-0000-4000-8000-000000000106'
+        and student_id = '53000000-0000-4000-8000-000000000004'),
+    'O the denial itself is still saved'
   );
 end
 $$;

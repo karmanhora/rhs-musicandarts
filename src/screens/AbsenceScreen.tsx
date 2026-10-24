@@ -253,7 +253,15 @@ export function AbsenceScreen() {
       toast.error(rpcError?.message || result?.message || "Could not save that decision.");
       return;
     }
-    toast.success(result.message ?? "Decision saved.");
+    // The queue is filtered to Pending by default, so the row leaves this view
+    // the moment it is decided. The server's message says whether the roll was
+    // marked excused or left alone; the second half says where the saved
+    // decision now lives.
+    toast.success(
+      decision === "approved"
+        ? `${result?.message ?? "Absence approved."} It is saved under the Approved tab.`
+        : `${result?.message ?? "Absence denied."} It is saved under the Denied tab.`
+    );
     setDeciding(null);
     await loadBase();
     await loadQueue();
@@ -379,8 +387,10 @@ export function AbsenceScreen() {
                   </Button>
                 </div>
                 <p className="type-meta">
-                  An approved absence is a decision, not a mark. Your attendance is still recorded on
-                  the day — bring the approval up if you are marked absent.
+                  If a reviewer approves, you are marked excused for that event and check-in closes to
+                  you for it. An excused event does not count against your attendance. If staff had
+                  already marked your attendance, that mark stays and the approval is only the
+                  decision.
                 </p>
               </div>
             )}
