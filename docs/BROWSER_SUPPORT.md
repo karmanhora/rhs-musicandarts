@@ -47,6 +47,7 @@ Counted in `dist/assets/index-*.css` after a production build:
 | `navigator.clipboard` | Roster join code | The copy button reports failure through the toast; the code is still selectable text. |
 | `navigator.vibrate` | `lib/motion.ts` | No-op. Haptics are never the only signal. |
 | `getUserMedia` (camera) | `QrScanner` | The scanner shows a plain-language message and the **type-the-code** pane stays available. |
+| `requestFullscreen` | `FullScreenCheckIn` (classroom display) | Guarded with `typeof`; if it is missing or refused, the display still fills the viewport as a plain overlay, and Escape still exits. |
 | `navigator.onLine` | `AppShell` | Treated as online; the offline banner simply never appears. |
 | `localStorage` | theme, remembered program, Supabase session | Every read and write is inside `try`/`catch`. Private mode degrades to a session-only sign-in and the OS theme preference. |
 | `structuredClone`, service workers, File System Access | not used | — |

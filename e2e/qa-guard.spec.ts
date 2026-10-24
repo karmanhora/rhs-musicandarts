@@ -596,6 +596,86 @@ test.describe("live check-in projector", () => {
       expect(fit!.overflow, `code line box overflows at ${width}px`).toBe(0);
     }
   });
+
+  /**
+   * The classroom display must present the *running* session, not start one of
+   * its own, and it must be leavable with Escape even where the Fullscreen API
+   * is refused. Starting it here would show a different code than the wall;
+   * leaving it without closing the overlay would strand a staff member.
+   */
+  test("the full-screen display shows the live code and leaves on Escape", async ({ page }) => {
+    const code = "A5TSTYZ2";
+    await installMocks(page, true);
+
+    await serveTodaysEvent(page);
+    let sessionStarts = 0;
+    await page.route(`${SUPABASE_HOST}/rest/v1/rpc/start_checkin_session`, (route) => {
+      sessionStarts += 1;
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        headers: { "access-control-allow-origin": "*" },
+        body: JSON.stringify({
+          ok: true,
+          token: "qa-session-token",
+          entry_code: code,
+          expires_at: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
+        }),
+      });
+    });
+
+    await page.goto("/checkin");
+    const start = page.getByRole("button", { name: "Start check-in" });
+    await expect(start).toBeVisible({ timeout: 60_000 });
+    await start.click();
+    await expect(page.getByText(code, { exact: true })).toBeVisible();
+
+    const open = page.getByRole("button", { name: "Full-screen display" });
+    const openBox = await open.boundingBox();
+    expect(openBox, "the full-screen opener is missing").not.toBeNull();
+    expect(openBox!.height).toBeGreaterThanOrEqual(44);
+    await open.click();
+    const display = page.getByRole("dialog", { name: "Check-in code, full screen" });
+    await expect(display).toBeVisible();
+    await expect(display.getByText(code, { exact: true })).toBeVisible();
+    await expect(display.getByText(/\d+ of \d+ checked in/)).toBeVisible();
+
+    // It covers the projector, not just the card it was opened from: an
+    // ancestor with a retained transform would trap a fixed child.
+    const covers = await display.evaluate((el) => {
+      const box = el.getBoundingClientRect();
+      return {
+        top: Math.round(box.top),
+        left: Math.round(box.left),
+        width: Math.round(box.width),
+        height: Math.round(box.height),
+        viewportWidth: window.innerWidth,
+        viewportHeight: window.innerHeight,
+      };
+    });
+    expect(covers.top).toBe(0);
+    expect(covers.left).toBe(0);
+    expect(covers.width).toBeGreaterThanOrEqual(covers.viewportWidth - 1);
+    expect(covers.height).toBeGreaterThanOrEqual(covers.viewportHeight - 1);
+    // Opening the display did not mint a second session.
+    expect(sessionStarts).toBe(1);
+
+    await page.keyboard.press("Escape");
+    await expect(display).toBeHidden();
+    // The projector view is still running the same code underneath.
+    await expect(page.getByText(code, { exact: true })).toBeVisible();
+
+    // The fallback: a browser that refuses fullscreen still gets the display,
+    // and Escape still leaves it.
+    await page.evaluate(() => {
+      Element.prototype.requestFullscreen = () => Promise.reject(new Error("denied"));
+    });
+    await page.getByRole("button", { name: "Full-screen display" }).click();
+    await expect(display).toBeVisible();
+    await expect(display.getByText(code, { exact: true })).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(display).toBeHidden();
+  });
 });
 
 test.describe("event detail actions", () => {

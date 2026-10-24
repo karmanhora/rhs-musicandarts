@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
-import { CheckCircle2, RefreshCw, Timer, Users, X } from "lucide-react";
+import { CheckCircle2, Maximize2, RefreshCw, Timer, Users, X } from "lucide-react";
 import {
   Alert,
   Badge,
@@ -20,6 +20,7 @@ import type { AttendanceRow, EventRow, RosterMember, RpcResult } from "../lib/ty
 import { usePrograms } from "../hooks/usePrograms";
 import { eventTypeChip, eventTypeLabel } from "../lib/constants";
 import { endOfDay, fmtTime, mmss, relativeDay, startOfDay } from "../lib/date";
+import { FullScreenCheckIn } from "./FullScreenCheckIn";
 
 /** Sessions live for five minutes (see `start_checkin_session`). */
 const SESSION_MS = 5 * 60 * 1000;
@@ -40,6 +41,28 @@ export function LiveCheckIn({ event, onExit }: { event: EventRow; onExit: () => 
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [attendance, setAttendance] = useState<AttendanceRow[]>([]);
   const [roster, setRoster] = useState<RosterMember[]>([]);
+  // The smartboard view reuses this component's session and polling; it is a
+  // presentation of the same live code, never a second one.
+  const [display, setDisplay] = useState(false);
+  const openDisplay = useCallback(() => {
+    setDisplay(true);
+    // Ask here, synchronously inside the click: Chrome and Safari reject a
+    // `requestFullscreen()` issued from an effect, after the gesture is spent.
+    // A refusal is not an error the staff can act on — the display overlay
+    // covers the viewport either way.
+    try {
+      if (typeof document.documentElement.requestFullscreen === "function") {
+        void document.documentElement.requestFullscreen().catch(() => undefined);
+      }
+    } catch {
+      /* the overlay alone is the display */
+    }
+  }, []);
+  const closeDisplay = useCallback(() => {
+    setDisplay(false);
+    // Leaving the overlay leaves the browser's fullscreen mode with it.
+    if (document.fullscreenElement) void document.exitFullscreen().catch(() => undefined);
+  }, []);
 
   const canRunCode = event.checkin_mode === "qr" || event.checkin_mode === "both";
 
@@ -292,6 +315,18 @@ export function LiveCheckIn({ event, onExit }: { event: EventRow; onExit: () => 
                 </div>
               </div>
             )}
+
+            {!expired ? (
+              <Button
+                block
+                variant="secondary"
+                size="lg"
+                onClick={openDisplay}
+                icon={<Maximize2 className="h-4 w-4" />}
+              >
+                Full-screen display
+              </Button>
+            ) : null}
           </Card>
 
           <div className="space-y-4">
@@ -423,6 +458,20 @@ export function LiveCheckIn({ event, onExit }: { event: EventRow; onExit: () => 
         <EmptyState
           title="No students on the roster yet"
           body="Add members from the Roster screen and they'll show up here."
+        />
+      ) : null}
+
+      {display && session?.token && session.entry_code && checkinUrl ? (
+        <FullScreenCheckIn
+          event={event}
+          checkinUrl={checkinUrl}
+          entryCode={session.entry_code}
+          expiresAt={session.expires_at ?? null}
+          nowMs={nowMs}
+          checkedIn={checkedIn.length}
+          total={students.length}
+          expired={expired}
+          onExit={closeDisplay}
         />
       ) : null}
     </div>
