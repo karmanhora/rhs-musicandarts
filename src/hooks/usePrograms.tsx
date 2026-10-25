@@ -3,13 +3,14 @@ import type { ReactNode } from "react";
 import { useAuth } from "./useAuth";
 import { applyThemeTokens } from "../lib/theme";
 import {
+  fetchActivePrograms,
   fetchMyMemberships,
   fetchProfileByAuthId,
   fetchSections,
   fetchThemeTokens,
 } from "../lib/queries";
-import { getMyPermissions, getTeacherAccessStatus } from "../lib/rpc";
-import { permissionsForRoles } from "../lib/permissions";
+import { getIsProgramAdmin, getMyPermissions, getTeacherAccessStatus } from "../lib/rpc";
+import { ALL_PERMISSION_CODES, permissionsForRoles } from "../lib/permissions";
 import type { PermissionCode } from "../lib/permissions";
 import type { EmbeddedMembership } from "../lib/queries";
 import type { EnsembleRow, Profile, Role, SectionRow } from "../lib/types";
@@ -25,7 +26,31 @@ import type { EnsembleRow, Profile, Role, SectionRow } from "../lib/types";
  *
  * The chosen program is remembered per person, so opening the app tomorrow shows
  * the one they last used.
+ *
+ * A **system administrator** (`program_admins`, migrations 009/013) is the one
+ * exception to "roles belong to a membership". The server gives that account
+ * every capability in every program — `has_permission()` answers `true` before
+ * it looks at a roster — so this provider lets it open a program it is not on,
+ * with `membership = null`. Nothing here grants anything: `my_permissions()`
+ * and the policies behind it remain the boundary, and a non-administrator gets
+ * only the programs their own rosters contain.
  */
+
+/**
+ * One row in the program switcher.
+ *
+ * `isMember` is false only for a program a system administrator is not on: there
+ * is no `memberships` row to read a role or a section from, and the subtitle
+ * says so rather than inventing "Student".
+ */
+export interface SwitchableProgram {
+  /** The membership id, or the program id when there is no roster row. */
+  id: string;
+  ensemble: EnsembleRow;
+  roles: Role[];
+  section: string | null;
+  isMember: boolean;
+}
 
 export type ProgramsStatus = "loading" | "ready" | "no-roster" | "error";
 
@@ -34,9 +59,9 @@ export interface ProgramsState {
   error: string | null;
   /** The signed-in person's row in `profiles`. */
   profile: Profile | null;
-  /** Every program this person is active in — the switcher reads this. */
+  /** Every program this person is active in — the roster half of the switcher. */
   memberships: EmbeddedMembership[];
-  /** The one currently on screen. */
+  /** The one currently on screen. Null only for an administrator off-roster. */
   membership: EmbeddedMembership | null;
   /** The current tracker's own row. */
   program: EnsembleRow | null;
@@ -54,7 +79,9 @@ export interface ProgramsState {
   /**
    * Director of a program somewhere. Reported by the server's roster, and the
    * one legacy allowance `create_program()` still makes for an account that was
-   * never issued an invitation (migration 023, kept by 035).
+   * never issued an invitation (migration 023, kept by 035). A system
+   * administrator counts too: `create_program()`'s gate is a capability check,
+   * and they hold every capability.
    */
   isDirectorAnywhere: boolean;
   /**
@@ -86,6 +113,18 @@ export interface ProgramsState {
   permissions: PermissionCode[];
   /** True when the current member's capabilities include `code`. */
   can: (code: PermissionCode) => boolean;
+  /**
+   * A system administrator: every capability in every program, present and
+   * future (`program_admins`). Used for copy and for the switcher's reach, never
+   * as an authority — the server does not consult a client flag.
+   */
+  isSystemAdmin: boolean;
+  /**
+   * Every program this person can open: their own rosters, plus — for a system
+   * administrator — the programs they are not on. The switcher and the "several
+   * programs" test read this, not `memberships`.
+   */
+  programs: SwitchableProgram[];
   /**
    * Re-read just the current program's sections. Used after a director adds,
    * renames or removes one, so the roster updates in place instead of the whole
@@ -128,6 +167,8 @@ const EMPTY: Omit<
   mayStartProgram: false,
   primaryRole: "student",
   permissions: [],
+  isSystemAdmin: false,
+  programs: [],
 };
 
 /** Remembered per person, so a switch survives a reload. */
@@ -164,6 +205,34 @@ function isStaffRole(roles: Role[]): boolean {
   );
 }
 
+/**
+ * The switcher's rows: this person's rosters first, then any program only a
+ * system administrator can reach. A program they *are* on keeps its real roles
+ * and section, so the administrator view never hides a directorship.
+ */
+function switchablePrograms(
+  memberships: EmbeddedMembership[],
+  everyProgram: EnsembleRow[]
+): SwitchableProgram[] {
+  const seen = new Set<string>();
+  const out: SwitchableProgram[] = [];
+  for (const m of memberships) {
+    seen.add(m.ensemble.id);
+    out.push({
+      id: m.id,
+      ensemble: m.ensemble,
+      roles: m.roles ?? [],
+      section: m.section?.name ?? null,
+      isMember: true,
+    });
+  }
+  for (const program of everyProgram) {
+    if (seen.has(program.id)) continue;
+    out.push({ id: program.id, ensemble: program, roles: [], section: null, isMember: false });
+  }
+  return out;
+}
+
 export function ProgramsProvider({ children }: { children: ReactNode }) {
   const auth = useAuth();
   const [state, setState] = useState<
@@ -183,13 +252,22 @@ export function ProgramsProvider({ children }: { children: ReactNode }) {
     async (
       profile: Profile,
       memberships: EmbeddedMembership[],
+      everyProgram: EnsembleRow[],
+      isSystemAdmin: boolean,
       wanted: string | null,
       verifiedTeacher: boolean
     ) => {
       const membership =
         memberships.find((m) => m.ensemble.id === wanted) ?? memberships[0] ?? null;
+      // An administrator may open a program they are not on; anybody else only
+      // ever sees the programs their own roster rows point at.
+      const program =
+        membership?.ensemble ??
+        (isSystemAdmin
+          ? (everyProgram.find((p) => p.id === wanted) ?? everyProgram[0] ?? null)
+          : null);
 
-      if (!membership) {
+      if (!program) {
         // Signed in, but on no roster at all: they need a join code.
         setState({
           ...EMPTY,
@@ -199,6 +277,8 @@ export function ProgramsProvider({ children }: { children: ReactNode }) {
           // No roster, so no directorship anywhere — a verified teacher is the
           // only thing that can open the start-a-program door here.
           mayStartProgram: verifiedTeacher,
+          isSystemAdmin,
+          programs: switchablePrograms(memberships, everyProgram),
           status: "no-roster",
           error: null,
         });
@@ -206,54 +286,59 @@ export function ProgramsProvider({ children }: { children: ReactNode }) {
       }
 
       const [sections, tokens] = await Promise.all([
-        fetchSections(membership.ensemble.id),
-        fetchThemeTokens(membership.ensemble.id),
+        fetchSections(program.id),
+        fetchThemeTokens(program.id),
       ]);
       applyThemeTokens(tokens);
 
       // Remember whichever program we settled on, whatever brought us here, so a
       // reload shows the same one (setProgram used to be the only path that did).
-      remember(profile.id, membership.ensemble.id);
+      remember(profile.id, program.id);
 
-      const roles = membership.roles ?? ["student"];
+      const roles = membership?.roles ?? [];
       // Directorship anywhere, from the roster itself — the one allowance the
       // server still makes for an account with no invitation (035 keeps 023's).
-      const isDirectorAnywhere = memberships.some(
-        (m) => m.active && (m.roles ?? []).includes("director")
-      );
+      const isDirectorAnywhere =
+        isSystemAdmin ||
+        memberships.some((m) => m.active && (m.roles ?? []).includes("director"));
       setState({
         status: "ready",
         error: null,
         profile,
         memberships,
         membership,
-        program: membership.ensemble,
+        program,
         sections,
         roles,
-        isDirector: roles.includes("director"),
+        isDirector: isSystemAdmin || roles.includes("director"),
         isSecretary: roles.includes("secretary"),
         isSectionLeader: roles.includes("section_leader"),
-        isStaff: isStaffRole(roles),
-        isStaffAnywhere: memberships.some((m) => isStaffRole(m.roles ?? [])),
+        isStaff: isSystemAdmin || isStaffRole(roles),
+        isStaffAnywhere: isSystemAdmin || memberships.some((m) => isStaffRole(m.roles ?? [])),
         canCreateProgram: accountType === "teacher" || isDirectorAnywhere || verifiedTeacher,
         isDirectorAnywhere,
         verifiedTeacher,
         // The client-side mirror of `create_program()`'s gate — not a boundary,
         // just what decides whether we show the form or ask for the code.
-        mayStartProgram: verifiedTeacher || isDirectorAnywhere,
+        mayStartProgram: isSystemAdmin || verifiedTeacher || isDirectorAnywhere,
         primaryRole: primaryRoleOf(roles),
         // Painted from the roles we already hold, so the right controls exist on
         // the first frame; replaced below by the server's authoritative list.
-        permissions: permissionsForRoles(roles),
+        // An administrator short-circuits to the whole catalogue because that is
+        // what `has_permission()` actually answers for them — otherwise the
+        // route gates would bounce them home before `my_permissions()` replied.
+        permissions: isSystemAdmin ? ALL_PERMISSION_CODES : permissionsForRoles(roles),
+        isSystemAdmin,
+        programs: switchablePrograms(memberships, everyProgram),
       });
 
       // The authoritative capabilities. A failure here leaves the role-derived
       // set in place — the UI stays usable and the server still decides.
-      const permissionResponse = await getMyPermissions(membership.ensemble.id);
+      const permissionResponse = await getMyPermissions(program.id);
       if (permissionResponse.result?.ok && Array.isArray(permissionResponse.result.permissions)) {
         const serverPermissions = permissionResponse.result.permissions as PermissionCode[];
         setState((prev) =>
-          prev.program?.id === membership.ensemble.id
+          prev.program?.id === program.id
             ? { ...prev, permissions: serverPermissions }
             : prev
         );
@@ -296,10 +381,21 @@ export function ProgramsProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      const memberships = (await fetchMyMemberships(profile.id)).filter((m) => m.active);
+      // The roster and the administrator answer are independent reads, so ask
+      // for both at once; the program list is only fetched for an administrator
+      // (RLS would answer with their own programs anyway).
+      const [memberships, isSystemAdmin] = await Promise.all([
+        fetchMyMemberships(profile.id),
+        getIsProgramAdmin(),
+      ]);
+      const activeMemberships = memberships.filter((m) => m.active);
+      const everyProgram = isSystemAdmin ? await fetchActivePrograms() : [];
+
       await loadProgram(
         profile,
-        memberships,
+        activeMemberships,
+        everyProgram,
+        isSystemAdmin,
         preferEnsembleId ?? readRemembered(profile.id),
         verifiedTeacher
       );
@@ -324,16 +420,23 @@ export function ProgramsProvider({ children }: { children: ReactNode }) {
   }, [refresh]);
 
   /**
-   * Move to another program this person belongs to. Whatever is on screen stays
-   * put while the next one loads, so switching never flashes a splash screen.
+   * Move to another program this person can open: one of their rosters, or — for
+   * a system administrator — any program at all. Whatever is on screen stays put
+   * while the next one loads, so switching never flashes a splash screen.
    */
   const setProgram = useCallback(
     (ensembleId: string) => {
-      const { profile, memberships, program } = state;
+      const { profile, memberships, program, isSystemAdmin, programs, verifiedTeacher } = state;
       if (!profile || ensembleId === program?.id) return;
       remember(profile.id, ensembleId);
-      void loadProgram(profile, memberships, ensembleId, state.verifiedTeacher).catch(
-        (e: unknown) => {
+      void loadProgram(
+        profile,
+        memberships,
+        programs.map((entry) => entry.ensemble),
+        isSystemAdmin,
+        ensembleId,
+        verifiedTeacher
+      ).catch((e: unknown) => {
         setState((prev) => ({
           ...prev,
           status: "error",

@@ -116,10 +116,10 @@ export function AppShell() {
   const items = navItems({ isStaff: app.isStaff, isDirector: app.isDirector });
   const name = app.profile?.display_name || app.profile?.full_name || "Member";
   const programName = app.program?.name ?? APP_NAME;
-  const inSeveral = app.memberships.length > 1;
-  const under = [ROLE_LABEL[app.primaryRole], app.membership?.section?.name]
-    .filter(Boolean)
-    .join(" · ");
+  // A system administrator's list is every program, not just their rosters.
+  const inSeveral = app.programs.length > 1;
+  const roleName = app.isSystemAdmin ? "System administrator" : ROLE_LABEL[app.primaryRole];
+  const under = [roleName, app.membership?.section?.name].filter(Boolean).join(" · ");
 
   return (
     <div className="app-shell flex h-full flex-col bg-[var(--cue-page)]">
@@ -351,7 +351,7 @@ function AccountSheet({ open, onClose }: { open: boolean; onClose: () => void })
           <div className="min-w-0">
             <p className="type-heading truncate">{name}</p>
             <p className="type-meta truncate">
-              {ROLE_LABEL[app.primaryRole]}
+              {app.isSystemAdmin ? "System administrator" : ROLE_LABEL[app.primaryRole]}
               {app.program?.name ? ` · ${app.program.name}` : ""}
             </p>
           </div>
@@ -421,11 +421,11 @@ function AccountSheet({ open, onClose }: { open: boolean; onClose: () => void })
               onClick={() => go("/roles")}
             />
           ) : null}
-          {app.memberships.length > 1 ? (
+          {app.programs.length > 1 ? (
             <Row
               icon={<ChevronsUpDown className="h-4 w-4" />}
               title="Switch program"
-              subtitle={`${app.memberships.length} programs`}
+              subtitle={`${app.programs.length} programs`}
               trailing={<ChevronRight aria-hidden="true" className="h-4 w-4 text-[var(--cue-subtle)]" />}
               onClick={() => {
                 onClose();

@@ -46,6 +46,7 @@ new decision — append here instead.
 | **No demo seed and no demo accounts.** Test fixtures run inside transactions that roll back. | Decided | [PLATFORM_PLAN.md §1](PLATFORM_PLAN.md); commit `fab4d01` removed obsolete demo-account references; `supabase/tests/*` |
 | **The weekly digest is deliberately unscheduled** until the shared Resend quota is settled. | Decided (operational) | [DEV.md §7](DEV.md); `scripts/migrate/04_functions_config.md` |
 | **No push/web-push notifications.** The in-app bell is the only channel beyond email. | Decided (deferred feature set) | [PLATFORM_PLAN.md §11](PLATFORM_PLAN.md) |
+| **One system administrator administers every program.** `program_admins` holds the owner's account (`lebronyuh64@gmail.com`); `is_program_admin()` gives that account every capability in every program, existing or future, and the app lists those programs in its switcher. A program director still cannot change a co-director's roles — only the system administrator can, which is why the grant exists. | Decided 2026-10-24 by owner request | [20261025010444_system_administrator_grant.sql](../supabase/migrations/20261025010444_system_administrator_grant.sql); [system_admin.sql](../supabase/tests/system_admin.sql) §A–§F; `src/hooks/usePrograms.tsx` (`isSystemAdmin`) |
 | **The school's logo artwork stays out.** An original placeholder mark ships and is expected to be replaced by an original design, not the school's. | Removed 2026-10-09 | [BRAND_ASSETS.md](BRAND_ASSETS.md); `public/logo.svg` header comment |
 
 ## 2. Platform direction: umbrella site, one program
@@ -66,7 +67,7 @@ and the schema is multi-program-ready by design.
   card (`src/screens/WelcomeScreen.tsx`).
 
 **What is deferred, not rejected:** a second program's actual data, sections,
-screens and copy; the program-admin UI; `/e/:slug` routing; per-program themes
+screens and copy; a program-admin **console**; `/e/:slug` routing; per-program themes
 beyond the token structure; cross-program analytics, calendar overlays and member
 management; per-program email branding and PWA manifests. The governing sentence
 is PLATFORM_PLAN §11: nothing until the owner says that work has started.
@@ -85,7 +86,7 @@ inference from a stale document or an empty table.
 | Item | Note |
 | --- | --- |
 | Second program data/screens (Orchestra, Choir, Drama, Jazz) | No seed rows, no screens, no copy |
-| Program-admin screens | `program_admins` exists in the DB; no UI until a program needs it |
+| A program-admin console | One `program_admins` account ships (2026-10-24) and can open every program's existing screens; a dedicated cross-program console is still unbuilt |
 | `/e/:slug` route mount | `/`, `/checkin`, `/roster`, … stay as they are; QR deep links in the wild must keep working |
 | Per-program themes | Token structure exists; one theme ships |
 | Cross-program analytics / calendar overlay / member management | Explicitly out of scope |

@@ -67,6 +67,21 @@ export async function fetchMyMemberships(userId: string): Promise<EmbeddedMember
   return (data ?? []) as unknown as EmbeddedMembership[];
 }
 
+/**
+ * Every active program. RLS decides the answer: `ensembles_read_members` shows
+ * a person their own programs, and a system administrator (`is_program_admin()`)
+ * every one — which is how the app can offer a program the administrator is not
+ * on without asking the client to trust a flag.
+ */
+export async function fetchActivePrograms(): Promise<EnsembleRow[]> {
+  const { data } = await supabase
+    .from("ensembles")
+    .select("id,slug,name,short_name,theme_color,logo_url,active,created_at")
+    .eq("active", true)
+    .order("name");
+  return (data ?? []) as unknown as EnsembleRow[];
+}
+
 export async function fetchSections(programId: string): Promise<SectionRow[]> {
   const { data } = await supabase
     .from("sections")

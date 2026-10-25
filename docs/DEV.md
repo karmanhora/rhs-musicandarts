@@ -263,6 +263,16 @@ already hold needs an explicit confirmation. Every change is written to
 `audit_logs`. Revocation needs nothing from the client: capabilities are
 recomputed on the next request.
 
+**System administrators** are the one grant the interface cannot make. A row in
+`program_admins` gives that account every capability in every program, existing
+or future — `has_permission()` short-circuits to `is_program_admin()`, and every
+policy and role RPC composes on that. Migration
+`20261025010444_system_administrator_grant.sql` grants it to the owner's account;
+the app asks the same function (`is_program_admin()`), so the switcher offers
+those programs and the screens behave as they do for a director. There is still
+no cross-program console — the account uses each program's existing screens, and
+`system_admin` remains unassignable from the UI.
+
 **Pictures.** `profiles.avatar_path` holds an object path in the private
 `avatars` bucket (030); `profiles.bio` is the optional 500-character biography.
 [`src/lib/avatar.ts`](../src/lib/avatar.ts) validates a chosen file for real

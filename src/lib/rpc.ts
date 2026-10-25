@@ -327,6 +327,17 @@ export const getMyAttendanceTrend = (programId: string, limit = 8) =>
 // --- Roles & capabilities (029) ---------------------------------------------
 
 /**
+ * Is this account a system administrator (`program_admins`)? The answer is the
+ * server's own `is_program_admin()` — the same function `has_permission()` and
+ * every policy compose on — never a client-side guess. A cross-program account
+ * uses it to reach programs it is not a member of; everybody else gets `false`.
+ */
+export async function getIsProgramAdmin(): Promise<boolean> {
+  const { data, error } = await supabase.rpc("is_program_admin");
+  return !error && data === true;
+}
+
+/**
  * The caller's own effective capabilities in one program. The frontend uses
  * this to decide what to render; every rule behind it is enforced again, per
  * request, by `has_permission()` inside RLS and the RPCs below.

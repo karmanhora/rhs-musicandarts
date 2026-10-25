@@ -1,5 +1,5 @@
 import { useNavigate } from "react-router-dom";
-import { Check, ChevronRight, UserPlus } from "lucide-react";
+import { Check, ChevronRight, ShieldCheck, UserPlus } from "lucide-react";
 import { List, Row, Sheet } from "./ui";
 import { usePrograms } from "../hooks/usePrograms";
 import { ORG_NAME, ROLE_LABEL } from "../lib/constants";
@@ -19,6 +19,10 @@ function roleLabelOf(roles: Role[]): string {
  * Only worth opening when there is more than one, so the app bar hides the
  * control until then — but joining a second program lives here too, so somebody
  * with a single program can still get to it from Profile.
+ *
+ * A system administrator sees every program, including the ones they are not
+ * on; those rows say "System administrator" instead of inventing a role. The
+ * database decides what they can do there, exactly as for everybody else.
  */
 export function ProgramSwitcher({ open, onClose }: { open: boolean; onClose: () => void }) {
   const app = usePrograms();
@@ -28,13 +32,19 @@ export function ProgramSwitcher({ open, onClose }: { open: boolean; onClose: () 
     <Sheet open={open} onClose={onClose} title="Switch program" description={ORG_NAME} size="tall">
       <div className="space-y-4">
         <List>
-          {app.memberships.map((m) => {
-            const here = m.ensemble.id === app.program?.id;
-            const bits = [roleLabelOf(m.roles ?? []), m.section?.name].filter(Boolean).join(" · ");
+          {app.programs.map((entry) => {
+            const here = entry.ensemble.id === app.program?.id;
+            const bits = [
+              entry.isMember ? roleLabelOf(entry.roles) : "System administrator",
+              entry.section,
+            ]
+              .filter(Boolean)
+              .join(" · ");
             return (
               <Row
-                key={m.id}
-                title={m.ensemble.name}
+                key={entry.id}
+                icon={entry.isMember ? undefined : <ShieldCheck className="h-4 w-4" />}
+                title={entry.ensemble.name}
                 subtitle={here ? `You're here · ${bits}` : bits}
                 trailing={
                   here ? (
@@ -50,7 +60,7 @@ export function ProgramSwitcher({ open, onClose }: { open: boolean; onClose: () 
                   here
                     ? undefined
                     : () => {
-                        app.setProgram(m.ensemble.id);
+                        app.setProgram(entry.ensemble.id);
                         onClose();
                       }
                 }
@@ -73,8 +83,9 @@ export function ProgramSwitcher({ open, onClose }: { open: boolean; onClose: () 
         </List>
 
         <p className="type-meta">
-          Roles, sections and colours come from the program you pick, so a director of one program is
-          a student in the next.
+          {app.isSystemAdmin
+            ? "As a system administrator you can open any program here, including ones you are not on. Roles, sections and colours still come from the program you pick."
+            : "Roles, sections and colours come from the program you pick, so a director of one program is a student in the next."}
         </p>
       </div>
     </Sheet>

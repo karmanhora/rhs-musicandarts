@@ -297,6 +297,8 @@ const RPC_RESULTS = {
    * server treats them.
    */
   teacher_access_status: { ok: true, verified: false, pending: true, admin: false },
+  /** The fixture persona is not a system administrator (`program_admins`). */
+  is_program_admin: false,
   my_permissions: { ok: true, permissions },
   get_my_attendance_pct: 92,
   get_my_attendance_trend: [

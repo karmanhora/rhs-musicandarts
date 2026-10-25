@@ -54,7 +54,7 @@ history too, not instructions.
 | **A member-deactivation button** | `deactivate_member()` still exists but deliberately has no UI; removal is `remove_member()` | [DEV.md §7](docs/DEV.md) |
 | **The school's logo artwork** | Removed on request 2026-10-09; an original placeholder ships in `public/logo.svg` | [BRAND_ASSETS.md](docs/BRAND_ASSETS.md) |
 | **A second program's data, screens or copy** (Orchestra, Choir, Drama, …) | Deferred, **not rejected** — nothing is seeded until the owner says work has started | [PLATFORM_PLAN.md §11](docs/PLATFORM_PLAN.md) |
-| **Program-admin UI** | DB support exists by design; screens deferred | [PLATFORM_PLAN.md §11](docs/PLATFORM_PLAN.md) |
+| **A program-admin console** | Deferred. One `program_admins` account now reaches every program's existing screens (owner request 2026-10-24); a dedicated cross-program console is still unbuilt | [FEATURE_DECISIONS.md §1](docs/FEATURE_DECISIONS.md), [20261025010444_system_administrator_grant.sql](supabase/migrations/20261025010444_system_administrator_grant.sql) |
 | **Changes to legal copy**, including the Privacy Policy Contact section | Owner-controlled; the docs and the shipped page currently disagree (see FEATURE_DECISIONS) | [WEBSITE_LEGAL_CHANGES.md](docs/privacy/WEBSITE_LEGAL_CHANGES.md) |
 
 Anything in that table is an owner decision, not a technical obstacle. If a task

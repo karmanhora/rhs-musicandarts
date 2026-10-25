@@ -146,6 +146,14 @@ export function permissionMeta(code: string): PermissionMeta | undefined {
 export const DELEGABLE_PERMISSIONS: PermissionMeta[] = PERMISSIONS.filter((p) => p.delegable);
 
 /**
+ * Every capability in the catalogue. This is exactly what a system
+ * administrator holds in every program — `has_permission()` short-circuits to
+ * `is_program_admin()` — so the interface can paint the full staff view on the
+ * first frame instead of flashing a student's for one request.
+ */
+export const ALL_PERMISSION_CODES: PermissionCode[] = PERMISSIONS.map((p) => p.code);
+
+/**
  * Capabilities each system role grants, mirroring the `role_permissions` seed.
  * Used to paint the interface before the server's answer arrives, and to explain
  * a role in the UI. `system_admin` is the `program_admins` table, not a
