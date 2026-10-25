@@ -42,6 +42,8 @@ export interface PreferencePatch {
   background?: BackgroundId;
   dashboard_modules?: DashboardModuleId[];
   onboarding_completed?: boolean;
+  /** Answering the first-run appearance prompt, whether saved or skipped. */
+  personalize_seen?: boolean;
 }
 
 export interface PreferencesState {
@@ -71,6 +73,12 @@ function merge(previous: ProfilePreferences, patch: PreferencePatch): ProfilePre
         : patch.onboarding_completed === false
           ? null
           : previous.onboarding_completed_at,
+    personalization_prompt_seen_at:
+      patch.personalize_seen === true
+        ? (previous.personalization_prompt_seen_at ?? new Date().toISOString())
+        : patch.personalize_seen === false
+          ? null
+          : previous.personalization_prompt_seen_at,
   };
 }
 
@@ -146,6 +154,7 @@ export function PreferencesProvider({ children }: { children: ReactNode }) {
       background: patch.background ?? null,
       dashboardModules: patch.dashboard_modules ?? null,
       onboardingCompleted: patch.onboarding_completed ?? null,
+      personalizeSeen: patch.personalize_seen ?? null,
     });
 
     if (seq !== saveSeq.current) {

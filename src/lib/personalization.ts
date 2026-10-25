@@ -132,7 +132,38 @@ export const DEFAULT_PREFERENCES: ProfilePreferences = {
   background: "paper",
   dashboard_modules: [...DEFAULT_DASHBOARD_MODULES],
   onboarding_completed_at: null,
+  personalization_prompt_seen_at: null,
 };
+
+/**
+ * Whether the first-run appearance prompt still applies to this person.
+ *
+ * Only students are asked: staff have the fuller guided setup, which already
+ * carries the same two controls. A program is required for the same reason —
+ * somebody who has not joined anywhere has nothing to personalize yet.
+ */
+export function shouldOfferPersonalizationPrompt({
+  preferences,
+  loading,
+  error,
+  isStaff,
+  hasProgram,
+}: {
+  preferences: ProfilePreferences;
+  loading: boolean;
+  /** A failed read means we cannot know; asking would be a guess, and answering it would fail. */
+  error: string | null;
+  isStaff: boolean;
+  hasProgram: boolean;
+}): boolean {
+  return (
+    !loading &&
+    !error &&
+    hasProgram &&
+    !isStaff &&
+    preferences.personalization_prompt_seen_at === null
+  );
+}
 
 export const THEMES: ThemeChoice[] = ["system", "light", "dark"];
 
@@ -190,15 +221,15 @@ export function parsePreferences(value: unknown): ProfilePreferences {
     modules.push(entry);
   }
 
+  const timestamp = (value: unknown) =>
+    typeof value === "string" && value.length > 0 ? value : null;
+
   return {
     theme,
     background,
     dashboard_modules: modules,
-    onboarding_completed_at:
-      typeof source.onboarding_completed_at === "string" &&
-      source.onboarding_completed_at.length > 0
-        ? source.onboarding_completed_at
-        : null,
+    onboarding_completed_at: timestamp(source.onboarding_completed_at),
+    personalization_prompt_seen_at: timestamp(source.personalization_prompt_seen_at),
   };
 }
 

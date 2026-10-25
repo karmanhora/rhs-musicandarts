@@ -750,12 +750,15 @@ export async function setMyPreferences(patch: {
   background?: BackgroundId | null;
   dashboardModules?: DashboardModuleId[] | null;
   onboardingCompleted?: boolean | null;
+  /** The first-run appearance prompt was answered — saved or skipped. */
+  personalizeSeen?: boolean | null;
 }): Promise<{ data: Record<string, unknown> | null; error: string | null }> {
   const { data, error } = await supabase.rpc("set_my_preferences", {
     p_theme: patch.theme ?? null,
     p_background: patch.background ?? null,
     p_dashboard_modules: patch.dashboardModules ?? null,
     p_onboarding_completed: patch.onboardingCompleted ?? null,
+    p_personalize_seen: patch.personalizeSeen ?? null,
   });
   if (error) return { data: null, error: error.message };
 

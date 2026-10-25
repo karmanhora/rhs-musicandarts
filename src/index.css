@@ -424,11 +424,29 @@ body {
   --app-page-image: none;
 }
 
+/*
+ * Every treatment sets **both** variables, never just the one it changes.
+ *
+ * These are custom properties, so they inherit. A preview card in the picker
+ * carries its own `data-background` but sits inside `<html>`, which carries the
+ * *chosen* treatment — so a rule that only set the image (or only the colour)
+ * let the rest inherit from the chosen page: selecting Grid drew a grid on all
+ * four previews, and Ruled picked up the page's colour. Setting the pair makes
+ * the attribute a complete description of the surface, whichever page it is
+ * nested in.
+ */
+[data-background="paper"] {
+  --app-page-color: var(--cue-page);
+  --app-page-image: none;
+}
+
 [data-background="mint"] {
   --app-page-color: var(--cue-leaf-soft);
+  --app-page-image: none;
 }
 
 [data-background="ruled"] {
+  --app-page-color: var(--cue-page);
   --app-page-image: repeating-linear-gradient(
     to bottom,
     var(--cue-line) 0,
@@ -439,6 +457,7 @@ body {
 }
 
 [data-background="grid"] {
+  --app-page-color: var(--cue-page);
   --app-page-image:
     repeating-linear-gradient(
       to right,

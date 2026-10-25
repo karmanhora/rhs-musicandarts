@@ -30,6 +30,7 @@ import { fetchAttendance, fetchEvents } from "../lib/queries";
 import type { EmbeddedMembership } from "../lib/queries";
 import { getMyAttendancePct, getMyAttendanceTrend } from "../lib/rpc";
 import type { EventRow, MyAttendanceRow } from "../lib/types";
+import { PersonalizationPrompt } from "../components/PersonalizationPrompt";
 import { usePrograms } from "../hooks/usePrograms";
 import { usePreferences } from "../hooks/usePreferences";
 import type { DashboardModuleId } from "../lib/types";
@@ -187,6 +188,10 @@ export function HomeScreen() {
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-5 pb-10 sm:px-6 sm:py-7">
+      {/* Offered once, to students, on the page they land on after joining. It
+          renders nothing at all for staff or once answered. */}
+      <PersonalizationPrompt />
+
       <div className="cue-stagger space-y-7">
         {error ? <Alert tone="error">{error}</Alert> : null}
 

@@ -14,6 +14,8 @@
 --   D  one person cannot read another's row, and a write only touches the caller
 --   E  no client may write the table directly
 --   F  finishing setup stamps once, and clearing it is explicit
+--   G  the first-run appearance prompt stamps its own field, keeps it, and is
+--      independent of the setup wizard's (migration 20261026120000)
 --
 -- Every fixture is fictional and the whole suite runs in ONE transaction that is
 -- ROLLED BACK — it never touches real records.
@@ -74,12 +76,15 @@ begin
   perform public.pref_assert(
     v->>'onboarding_completed_at' is null,
     'A6 setup has not been finished yet');
+  perform public.pref_assert(
+    v->>'personalization_prompt_seen_at' is null,
+    'A7 the appearance prompt has not been offered yet');
 
   reset role;
 
   perform public.pref_assert(
     (select count(*) from public.profile_preferences where user_id = 'eeeeeeee-0000-4000-8000-000000000001') = 0,
-    'A7 reading preferences does not write a row');
+    'A8 reading preferences does not write a row');
 end
 $$;
 
@@ -284,6 +289,73 @@ begin
   v := public.set_my_preferences(p_onboarding_completed => false);
   perform public.pref_assert(v->>'onboarding_completed_at' is null, 'F5 clearing it is explicit');
 
+  reset role;
+end
+$$;
+
+-- ---------------------------------------------------------------------------
+-- G. The first-run appearance prompt
+-- ---------------------------------------------------------------------------
+do $$
+declare
+  v        jsonb;
+  v_first  timestamptz;
+begin
+  perform set_config('request.jwt.claims', '{"sub":"pref-auth-a","role":"authenticated"}', true);
+  set role authenticated;
+
+  v := public.set_my_preferences(p_background => 'mint');
+  perform public.pref_assert(
+    v->>'personalization_prompt_seen_at' is null,
+    'G1 choosing a background does not answer the prompt');
+
+  v := public.set_my_preferences(p_personalize_seen => true);
+  perform public.pref_assert(v->>'ok' = 'true', 'G2 the prompt can be answered');
+  perform public.pref_assert(
+    v->>'personalization_prompt_seen_at' is not null,
+    'G3 answering records a timestamp');
+  v_first := (v->>'personalization_prompt_seen_at')::timestamptz;
+
+  v := public.set_my_preferences(p_personalize_seen => true);
+  perform public.pref_assert(
+    (v->>'personalization_prompt_seen_at')::timestamptz = v_first,
+    'G4 answering twice keeps the first timestamp');
+
+  -- An unrelated save must leave it alone, or the prompt would return every
+  -- time somebody changed the theme.
+  v := public.set_my_preferences(p_theme => 'light');
+  perform public.pref_assert(
+    (v->>'personalization_prompt_seen_at')::timestamptz = v_first,
+    'G5 another save keeps the answer');
+
+  -- The two timestamps are separate states: a student answering the prompt must
+  -- not have "finished setup" on their account for later as a director.
+  perform public.pref_assert(
+    v->>'onboarding_completed_at' is null,
+    'G6 answering the prompt does not finish setup');
+
+  v := public.set_my_preferences(p_onboarding_completed => true);
+  perform public.pref_assert(
+    (v->>'personalization_prompt_seen_at')::timestamptz = v_first,
+    'G7 finishing setup leaves the prompt answer alone');
+
+  v := public.set_my_preferences(p_personalize_seen => false);
+  perform public.pref_assert(
+    v->>'personalization_prompt_seen_at' is null,
+    'G8 clearing the answer is explicit');
+  perform public.pref_assert(
+    v->>'onboarding_completed_at' is not null,
+    'G9 clearing the prompt answer leaves setup state alone');
+
+  reset role;
+
+  -- Second person: neither timestamp is shared between accounts.
+  perform set_config('request.jwt.claims', '{"sub":"pref-auth-b","role":"authenticated"}', true);
+  set role authenticated;
+  v := public.my_preferences();
+  perform public.pref_assert(
+    v->>'personalization_prompt_seen_at' is null,
+    'G10 another person is still owed the prompt');
   reset role;
 end
 $$;

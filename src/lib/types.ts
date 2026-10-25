@@ -71,6 +71,13 @@ export interface ProfilePreferences {
   dashboard_modules: DashboardModuleId[];
   /** When the guided setup was finished; null means it never was. */
   onboarding_completed_at: string | null;
+  /**
+   * When the short appearance prompt was answered — saved or skipped; null means
+   * it has not been shown yet. Deliberately not `onboarding_completed_at`: that
+   * is the teacher's setup wizard, and a student answering this must not use it
+   * up (20261026120000).
+   */
+  personalization_prompt_seen_at: string | null;
 }
 
 /**

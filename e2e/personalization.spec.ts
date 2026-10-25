@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
-import { installMocks } from "./support/mocks.mjs";
+import { installMocks, memberships } from "./support/mocks.mjs";
 
 /**
  * The shared fixtures are pinned to a fixed "now" in the past, so the dashboard
@@ -46,6 +46,64 @@ async function serveUpcomingEvents(page: Page): Promise<void> {
       ]),
     })
   );
+}
+
+/**
+ * Serve the fixture persona as a plain student who has never been asked.
+ *
+ * Two states have to be arranged, and the shared mock deliberately ships
+ * neither: the band membership carries the `director` role there (staff are not
+ * asked), and the appearance prompt is stamped as answered. Registered after
+ * `installMocks`, so these handlers answer first. The preferences handler is
+ * stateful because the RPC is: answering the prompt must still read as answered
+ * after a reload.
+ */
+async function serveUnaskedStudent(page: Page): Promise<void> {
+  await page.route("**/rest/v1/memberships?*", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      headers: { "access-control-allow-origin": "*", "content-range": "0-1/2" },
+      body: JSON.stringify(memberships.map((m) => ({ ...m, roles: ["member"] }))),
+    })
+  );
+
+  const state: Record<string, unknown> = {
+    ok: true,
+    theme: "system",
+    background: "paper",
+    dashboard_modules: [
+      "coming_up",
+      "my_attendance",
+      "my_programs",
+      "program_facts",
+      "quick_links",
+    ],
+    onboarding_completed_at: null,
+    personalization_prompt_seen_at: null,
+  };
+
+  await page.route(/\/rest\/v1\/rpc\/(my|set_my)_preferences$/, (route) => {
+    const fn = new URL(route.request().url()).pathname.split("/").pop();
+    if (fn === "set_my_preferences") {
+      const patch = (route.request().postDataJSON() ?? {}) as Record<string, unknown>;
+      if (typeof patch.p_theme === "string") state.theme = patch.p_theme;
+      if (typeof patch.p_background === "string") state.background = patch.p_background;
+      if (Array.isArray(patch.p_dashboard_modules)) {
+        state.dashboard_modules = patch.p_dashboard_modules;
+      }
+      if (patch.p_personalize_seen === true) {
+        state.personalization_prompt_seen_at ??= "2026-10-26T00:00:00.000Z";
+      }
+      if (patch.p_personalize_seen === false) state.personalization_prompt_seen_at = null;
+    }
+    return route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      headers: { "access-control-allow-origin": "*" },
+      body: JSON.stringify(state),
+    });
+  });
 }
 
 /**
@@ -97,6 +155,55 @@ test.describe("personal appearance and dashboard", () => {
     release();
   });
 
+  test("each background preview keeps its own treatment when another is chosen", async ({
+    page,
+  }) => {
+    await installMocks(page, true);
+    await page.goto("/settings");
+    await page.getByRole("tab", { name: "Preferences" }).click();
+
+    const previews = page.locator(
+      '[role="radiogroup"][aria-label="Page background"] [role="radio"] [data-background]'
+    );
+    const EACH_PREVIEW = () =>
+      previews.evaluateAll((nodes) =>
+        nodes.map((node) => {
+          const style = getComputedStyle(node);
+          return {
+            treatment: node.getAttribute("data-background"),
+            image: style.backgroundImage,
+            color: style.backgroundColor,
+          };
+        })
+      );
+    const treatment = (all: Awaited<ReturnType<typeof EACH_PREVIEW>>, id: string) =>
+      all.find((entry) => entry.treatment === id)!;
+
+    const before = await EACH_PREVIEW();
+
+    // The four previews are four different surfaces: two plain (paper, mint —
+    // told apart by colour) and two patterned, ruled and grid being different
+    // patterns.
+    expect(treatment(before, "paper").image).toBe("none");
+    expect(treatment(before, "mint").image).toBe("none");
+    expect(treatment(before, "paper").color).not.toBe(treatment(before, "mint").color);
+    expect(treatment(before, "ruled").image).not.toBe(treatment(before, "grid").image);
+
+    // Choosing a treatment changes the page and the selected card's indicator —
+    // never the content of a preview. Grid is the one that used to bleed a grid
+    // onto every card through inherited custom properties.
+    for (const [label, id] of [
+      ["Grid", "grid"],
+      ["Ruled", "ruled"],
+      ["Paper", "paper"],
+      ["Rehearsal", "mint"],
+    ] as const) {
+      await page.getByRole("radio", { name: new RegExp(label) }).click();
+      await expect(page.locator("html")).toHaveAttribute("data-background", id);
+      expect(await EACH_PREVIEW()).toEqual(before);
+    }
+  });
+
   test("hiding a dashboard block removes it and keeps it hidden", async ({ page }) => {
     await installMocks(page, true);
     await serveUpcomingEvents(page);
@@ -143,6 +250,50 @@ test.describe("personal appearance and dashboard", () => {
     await expect(account).toBeVisible({ timeout: 20_000 });
     await account.click();
     await expect(page.getByRole("dialog").getByText("Finish setting up")).toHaveCount(0);
+  });
+
+  /* ------------------------------------------------------------------ *
+   * The first-run appearance prompt (migration 20261026120000).
+   * ------------------------------------------------------------------ */
+
+  test("a student is offered the appearance prompt once, after joining", async ({ page }) => {
+    await installMocks(page, true);
+    await serveUnaskedStudent(page);
+    await page.goto("/");
+
+    const sheet = page.getByRole("dialog");
+    await expect(sheet.getByText("Make it yours")).toBeVisible({ timeout: 20_000 });
+
+    // Both choices take effect while the sheet is open — the change is the
+    // preview, so there is nothing to "try out" and nothing to lose.
+    await sheet.getByRole("tab", { name: "Dark", exact: true }).click();
+    await expect(page.locator("html")).toHaveClass(/dark/);
+    await sheet.getByRole("radio", { name: /Ruled/ }).click();
+    await expect(page.locator("html")).toHaveAttribute("data-background", "ruled");
+
+    await sheet.getByRole("button", { name: "Done" }).click();
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+
+    // Answered means answered: the choices survive, the question does not return.
+    await page.reload();
+    await expect(page.locator("html")).toHaveAttribute("data-background", "ruled");
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+  });
+
+  test("skipping the prompt is enough to stop being asked", async ({ page }) => {
+    await installMocks(page, true);
+    await serveUnaskedStudent(page);
+    await page.goto("/");
+
+    const sheet = page.getByRole("dialog");
+    await expect(sheet.getByText("Make it yours")).toBeVisible({ timeout: 20_000 });
+
+    await sheet.getByRole("button", { name: "Skip" }).click();
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+
+    await page.reload();
+    await expect(page.locator("html")).toHaveAttribute("data-background", "paper");
+    await expect(page.getByRole("dialog")).toHaveCount(0);
   });
 
   test("dark is painted, then forgotten on sign-out", async ({ page }) => {

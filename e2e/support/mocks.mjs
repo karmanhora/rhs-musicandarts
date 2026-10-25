@@ -72,7 +72,8 @@ const orchestra = {
   created_at: "2026-08-01T00:00:00.000Z",
 };
 
-const memberships = [
+/** Exported so a spec can re-serve it with a plain student's roles. */
+export const memberships = [
   {
     id: "66666666-6666-4666-8666-666666666666",
     user_id: PROFILE_ID,
@@ -526,7 +527,14 @@ function json(route, body, status = 200) {
 }
 
 export function routeSupabase(page) {
-  /** The fixture persona has no preferences row, so this is the shipped default. */
+  /**
+   * The fixture persona has no preferences row, so this is the shipped default —
+   * plus a stamp for the first-run appearance prompt (20261026120000). That stamp
+   * is set because the persona is a *director* here, and staff are never asked;
+   * without it every screen that switches to the orchestra (where they are only a
+   * member) would open a sheet on top of the test. The prompt's own spec overrides
+   * this with a null stamp and a student's roles.
+   */
   const preferences = {
     theme: "system",
     background: "paper",
@@ -538,6 +546,7 @@ export function routeSupabase(page) {
       "quick_links",
     ],
     onboarding_completed_at: null,
+    personalization_prompt_seen_at: "2026-10-25T00:00:00.000Z",
   };
 
   return page.route(`${SUPABASE_HOST}/**`, async (route) => {
@@ -571,6 +580,12 @@ export function routeSupabase(page) {
             preferences.onboarding_completed_at ??= "2026-10-25T00:00:00.000Z";
           }
           if (patch.p_onboarding_completed === false) preferences.onboarding_completed_at = null;
+          if (patch.p_personalize_seen === true) {
+            preferences.personalization_prompt_seen_at ??= "2026-10-26T00:00:00.000Z";
+          }
+          if (patch.p_personalize_seen === false) {
+            preferences.personalization_prompt_seen_at = null;
+          }
         }
         return json(route, { ok: true, ...preferences });
       }
