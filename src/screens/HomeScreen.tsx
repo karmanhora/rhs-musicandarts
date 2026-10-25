@@ -31,6 +31,8 @@ import type { EmbeddedMembership } from "../lib/queries";
 import { getMyAttendancePct, getMyAttendanceTrend } from "../lib/rpc";
 import type { EventRow, MyAttendanceRow } from "../lib/types";
 import { usePrograms } from "../hooks/usePrograms";
+import { usePreferences } from "../hooks/usePreferences";
+import type { DashboardModuleId } from "../lib/types";
 import {
   ATTENDANCE_REQUIREMENT_LABEL,
   ATTENDANCE_STATUS_CHIP,
@@ -78,6 +80,20 @@ function DayMark({ iso, className }: { iso: string; className?: string }) {
 export function HomeScreen() {
   const app = usePrograms();
   const navigate = useNavigate();
+  const { preferences } = usePreferences();
+
+  /**
+   * The person's own dashboard, as a set of allowed blocks.
+   *
+   * The next-event panel above these is not part of the list: it is the page's
+   * focal point and stays. Everything below is shown only if it is both chosen
+   * *and* has something to say — a hidden block, an empty list and a student's
+   * staff-only block all leave no gap behind. Order is `style.order` inside the
+   * two flex columns, so the layout keeps its uneven pair of tracks while the
+   * blocks inside each one follow the saved order.
+   */
+  const moduleOrder = preferences.dashboard_modules;
+  const shows = (id: DashboardModuleId) => moduleOrder.includes(id);
 
   const programId = app.program?.id ?? null;
   const profileId = app.profile?.id ?? null;
@@ -378,9 +394,12 @@ export function HomeScreen() {
 
         {/* --- two uneven columns: what's coming, and who you are here --- */}
         <div className="grid grid-cols-1 gap-8 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)] lg:gap-10">
-          <div className="space-y-8">
-            {alsoUpcoming.length > 0 ? (
-              <section aria-labelledby="coming-up">
+          <div className="flex flex-col gap-8">
+            {shows("coming_up") && alsoUpcoming.length > 0 ? (
+              <section
+                aria-labelledby="coming-up"
+                style={{ order: moduleOrder.indexOf("coming_up") }}
+              >
                 <SectionTitle
                   className="mb-3"
                   action={
@@ -431,8 +450,11 @@ export function HomeScreen() {
             ) : null}
 
             {/* --- the record --- */}
-            {percentage !== null ? (
-              <section aria-labelledby="my-attendance">
+            {shows("my_attendance") && percentage !== null ? (
+              <section
+                aria-labelledby="my-attendance"
+                style={{ order: moduleOrder.indexOf("my_attendance") }}
+              >
                 <SectionTitle
                   className="mb-3"
                   action={<span className="type-meta">Required events only</span>}
@@ -494,8 +516,12 @@ export function HomeScreen() {
           </div>
 
           {/* --- the narrow column: your standing in this program --- */}
-          <aside className="space-y-8">
-            <section aria-labelledby="my-programs">
+          <aside className="flex flex-col gap-8">
+            {shows("my_programs") ? (
+            <section
+              aria-labelledby="my-programs"
+              style={{ order: moduleOrder.indexOf("my_programs") }}
+            >
               <SectionTitle
                 className="mb-3"
                 action={
@@ -526,9 +552,13 @@ export function HomeScreen() {
                 ))}
               </List>
             </section>
+            ) : null}
 
-            {app.isStaff ? (
-              <section aria-labelledby="today-work">
+            {app.isStaff && shows("program_facts") ? (
+              <section
+                aria-labelledby="today-work"
+                style={{ order: moduleOrder.indexOf("program_facts") }}
+              >
                 <SectionTitle className="mb-3">
                   <span id="today-work">This program</span>
                 </SectionTitle>
@@ -553,8 +583,13 @@ export function HomeScreen() {
                   </MetricStrip>
                 </div>
               </section>
-            ) : (
-              <section aria-labelledby="quick-links">
+            ) : null}
+
+            {!app.isStaff && shows("quick_links") ? (
+              <section
+                aria-labelledby="quick-links"
+                style={{ order: moduleOrder.indexOf("quick_links") }}
+              >
                 <SectionTitle className="mb-3">
                   <span id="quick-links">Quick links</span>
                 </SectionTitle>
@@ -573,7 +608,7 @@ export function HomeScreen() {
                   />
                 </List>
               </section>
-            )}
+            ) : null}
           </aside>
         </div>
       </div>

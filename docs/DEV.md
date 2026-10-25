@@ -18,7 +18,7 @@ exists, but nothing in the code assumes it is the only one.
 | Path | What it is |
 | --- | --- |
 | `src/` | The web app: Vite + React 19 + TypeScript + Tailwind v4 |
-| `supabase/migrations/` (39 files) | The multi-program schema, policies, RPCs, calendar sync, join flow, Supabase Auth identity, teacher-gated `create_program`, account/program lifecycle, staff-managed email invitations, the capability layer (029), profile pictures (030), program instruments + complete removal (031), the scheduled digest (032–033), pinned function search paths (034), teacher/director verification by invitation code (035), the 48-hour reminder + post-event make-up email queues (036), and the later timestamped migrations (attendance audit, absence requests, reports, notification centre). Applied state is recorded in the reports, never inferred from this count |
+| `supabase/migrations/` (one file per change; the directory is the count) | The multi-program schema, policies, RPCs, calendar sync, join flow, Supabase Auth identity, teacher-gated `create_program`, account/program lifecycle, staff-managed email invitations, the capability layer (029), profile pictures (030), program instruments + complete removal (031), the scheduled digest (032–033), pinned function search paths (034), teacher/director verification by invitation code (035), the 48-hour reminder + post-event make-up email queues (036), and the later timestamped migrations (attendance audit, absence requests, reports, notification centre). Applied state is recorded in the reports, never inferred from this count |
 | `supabase/tests/` | SQL suites (backfill, isolation, security, join, create program, signup account type, teacher invitations, account deletion, program archive, email invites, capabilities & avatars, program sections & removal, digest reachability, event reminder + make-up email rules) run inside transactions |
 | `supabase/templates/` | Branded Supabase auth emails and the password-change security notification — see [`EMAIL_SETUP.md`](EMAIL_SETUP.md) |
 | `public/` | The app's brand assets: one `logo.svg` and the icons rendered from it — see [`BRAND_ASSETS.md`](BRAND_ASSETS.md) |
@@ -477,8 +477,10 @@ harnesses: `scripts/dev/check_event_reminders.mjs` and
 src/lib/queries.ts   the few table reads (RLS-scoped: profiles, events, attendance…)
 src/lib/rpc.ts       every write, plus analytics — all SECURITY DEFINER RPCs
 src/lib/types.ts     row + RPC shapes; roles live on memberships, never on profiles
+src/lib/personalization.ts  appearance + dashboard catalogue, and the pre-paint cache
 src/hooks/useAuth.tsx      the Supabase Auth session (status, user, sign in/out, password)
 src/hooks/usePrograms.tsx  who am I, which programs am I in, which one is on screen
+src/hooks/usePreferences.tsx  my theme, background, dashboard blocks, setup state
 src/components/ui.tsx  the UI kit: buttons, cards, sheets, toasts, progress ring
 src/components/AppShell.tsx      umbrella app bar, bottom nav, program switcher
 src/screens/         one file per route (see src/App.tsx for the route table)
@@ -507,6 +509,15 @@ Rules the code follows, and that changes should keep:
 - **Screens are composed from §2.** A new screen opens with `PageHeader` and uses
   `List`/`Row` for anything list-shaped; it does not introduce a new card style,
   a new heading size or a new colour.
+- **A person's choices are not a program's.** Theme, page background, dashboard
+  blocks and "setup finished" live in `profile_preferences` (one row per person,
+  read through `my_preferences()`, written through `set_my_preferences()`), and
+  `src/lib/personalization.ts` is the only catalogue. `ensemble_theme_tokens`
+  stays the *program palette* and stays read-only to clients: there is no
+  program-wide default appearance, by decision (FEATURE_DECISIONS §3).
+- **The guided setup is optional.** `/setup` is gated on `program.manage_settings`,
+  every step can be skipped, and `onboarding_completed_at` only decides whether it
+  is offered again. It must never gate a screen, a capability or a check-in.
 
 ## 7. Not done yet
 
@@ -555,6 +566,14 @@ Rules the code follows, and that changes should keep:
   bound, teacher accounts still cannot start a program until one is redeemed.
   The apply step, the binding of the first code and the day-to-day operations are
   all in [`TEACHER_VERIFICATION.md`](TEACHER_VERIFICATION.md).
+- **The preferences migration is prepared, not applied.**
+  `20261025120000_profile_preferences.sql` adds `profile_preferences` and its two
+  RPCs; the frontend that reads them (Account settings → Preferences, the
+  dashboard's block order, `/setup`) is in this tree and degrades to the shipped
+  defaults if the table is absent, but it must not be deployed before the
+  migration is applied — the Appearance controls would show an error for every
+  save. Verify with `bash scripts/dev/verify_migrations_locally.sh`, then apply it
+  with approval and *then* deploy. Its suite is `supabase/tests/profile_preferences.sql`.
 - **029 and 030 are applied** (live project, 2026-10-11), and the frontend that
   uses them was deployed on 2026-10-21 (recorded in
   [`FEATURE_IMPLEMENTATION_REPORT.md`](FEATURE_IMPLEMENTATION_REPORT.md) §6b). The

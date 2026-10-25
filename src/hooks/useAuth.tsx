@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import type { Session, User } from "@supabase/supabase-js";
 import type { AuthAudience } from "../lib/constants";
 import { getSignupAccountType, setSignupAccountType } from "../lib/rpc";
+import { clearAppearanceCache } from "../lib/personalization";
 import { supabase } from "../lib/supabase";
 
 /**
@@ -300,7 +301,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   const signOut = useCallback(async () => {
-    await supabase.auth.signOut();
+    try {
+      await supabase.auth.signOut();
+    } finally {
+      // On a shared school device the next person must never see the previous
+      // one's theme or background — not even for the frame before this screen
+      // unmounts. The saved choices live on the server and come back on the
+      // next sign-in; only this device's copy is forgotten.
+      clearAppearanceCache();
+    }
   }, []);
 
   const sendPasswordReset = useCallback(async (email: string) => {
@@ -379,6 +388,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!data?.ok) return { error: data?.error ?? "Account deletion did not complete." };
 
     const { error: signOutError } = await supabase.auth.signOut({ scope: "local" });
+    clearAppearanceCache();
     return {
       error: signOutError
         ? `Your account was deleted, but this device could not sign out: ${readable(signOutError.message)}`

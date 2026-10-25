@@ -47,6 +47,8 @@ new decision — append here instead.
 | **The weekly digest is deliberately unscheduled** until the shared Resend quota is settled. | Decided (operational) | [DEV.md §7](DEV.md); `scripts/migrate/04_functions_config.md` |
 | **No push/web-push notifications.** The in-app bell is the only channel beyond email. | Decided (deferred feature set) | [PLATFORM_PLAN.md §11](PLATFORM_PLAN.md) |
 | **One system administrator administers every program.** `program_admins` holds the owner's account (`lebronyuh64@gmail.com`); `is_program_admin()` gives that account every capability in every program, existing or future, and the app lists those programs in its switcher. A program director still cannot change a co-director's roles — only the system administrator can, which is why the grant exists. | Decided 2026-10-24 by owner request | [20261025010444_system_administrator_grant.sql](../supabase/migrations/20261025010444_system_administrator_grant.sql); [system_admin.sql](../supabase/tests/system_admin.sql) §A–§F; `src/hooks/usePrograms.tsx` (`isSystemAdmin`) |
+| **Personal appearance and dashboard choices are per person.** `profile_preferences` holds theme, page treatment, dashboard block order and setup state; RLS shows one row to one person and `set_my_preferences()` is the only write path. `ensemble_theme_tokens` remains the *program palette* and stays read-only to clients — there is no program-wide default appearance. | Decided 2026-10-24 by owner request | [20261025120000_profile_preferences.sql](../supabase/migrations/20261025120000_profile_preferences.sql); [profile_preferences.sql](../supabase/tests/profile_preferences.sql); `src/lib/personalization.ts`; [DESIGN_SYSTEM.md](DESIGN_SYSTEM.md) (page treatments) |
+| **Guided setup is offered, never enforced.** `/setup` (join code → sections → workspace) is gated on `program.manage_settings`, skippable at every step, and `onboarding_completed_at` only decides whether it is offered again — it never gates a screen, a capability or a check-in. | Decided 2026-10-24 by owner request | `src/screens/SetupScreen.tsx`; `src/screens/NewProgramScreen.tsx` (creation lands there); `src/components/AppShell.tsx` (the offer) |
 | **The school's logo artwork stays out.** An original placeholder mark ships and is expected to be replaced by an original design, not the school's. | Removed 2026-10-09 | [BRAND_ASSETS.md](BRAND_ASSETS.md); `public/logo.svg` header comment |
 
 ## 2. Platform direction: umbrella site, one program
@@ -89,6 +91,9 @@ inference from a stale document or an empty table.
 | A program-admin console | One `program_admins` account ships (2026-10-24) and can open every program's existing screens; a dedicated cross-program console is still unbuilt |
 | `/e/:slug` route mount | `/`, `/checkin`, `/roster`, … stay as they are; QR deep links in the wild must keep working |
 | Per-program themes | Token structure exists; one theme ships |
+| Program-wide appearance defaults | Deliberately not built (2026-10-24): a person's own choice is the only one, and `ensemble_theme_tokens` has no editor or write RPC |
+| Custom background uploads | Built-in page treatments only (2026-10-24); no bucket, upload path, validation or signed-URL story exists |
+| A student first-run personalization prompt | Not built (2026-10-24). A student personalizes from Account settings → Preferences; the join screen already sends a returning student straight into their program, so no extra step was added |
 | Cross-program analytics / calendar overlay / member management | Explicitly out of scope |
 | Push notifications / web push | In-app bell + email only |
 | Per-user in-app notification preferences | Email preferences exist; in-app has no opt-out |

@@ -82,11 +82,13 @@ export function NewProgramScreen({ standalone = false }: { standalone?: boolean 
     }
 
     // Land in the program they just made (not the one they happened to be in),
-    // then go where a director needs to be: the join code and the roster.
+    // then open the guided setup: the join code, the sections, and how their own
+    // dashboard reads. It is skippable and changes nothing about access — a
+    // director who leaves immediately keeps a working program.
     await app.refresh(result.program_id ?? undefined);
     setBusy(false);
     toast.success("Your program is ready — share its join code with your students.");
-    navigate("/roster");
+    navigate("/setup");
   }
 
   /*

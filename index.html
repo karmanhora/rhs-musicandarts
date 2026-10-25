@@ -18,17 +18,34 @@
       content="Attendance, events, and check-in tools for Redmond High School students and staff."
     />
     <script>
+      /*
+       * Appearance, before the first paint.
+       *
+       * The saved choices live in `localStorage` under the keys
+       * `src/lib/personalization.ts` owns; this reads the same two and applies
+       * them to <html> so a dark theme or a chosen background never flashes the
+       * default for one frame. A failed read is silent and the defaults stand.
+       */
       (() => {
+        const root = document.documentElement;
         let dark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+        let background = "paper";
         try {
           const stored = localStorage.getItem("rhs-band:dark");
           if (stored === "true") dark = true;
           if (stored === "false") dark = false;
+          const storedBackground = localStorage.getItem("rhs:appearance:background");
+          // Shape only: the stylesheet ignores an id it does not define, but a
+          // value that is not even a slug is not worth setting on the element.
+          if (typeof storedBackground === "string" && /^[a-z][a-z0-9-]{0,31}$/.test(storedBackground)) {
+            background = storedBackground;
+          }
         } catch {
           // Keep the operating-system preference when storage is unavailable.
         }
-        document.documentElement.classList.toggle("dark", dark);
-        document.documentElement.style.colorScheme = dark ? "dark" : "light";
+        root.classList.toggle("dark", dark);
+        root.style.colorScheme = dark ? "dark" : "light";
+        root.setAttribute("data-background", background);
       })();
     </script>
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />

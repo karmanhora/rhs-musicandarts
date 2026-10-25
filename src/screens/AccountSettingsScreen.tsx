@@ -9,9 +9,7 @@ import {
   Mail,
   MailWarning,
   MonitorSmartphone,
-  Moon,
   ShieldCheck,
-  Sun,
   Trash2,
   UserRound,
   Wand2,
@@ -35,13 +33,14 @@ import {
 } from "../components/ui";
 import { ProfileForm } from "../components/ProfileForm";
 import { CapabilityList, RoleBadges } from "../components/CapabilityList";
+import { AppearanceSettings } from "../components/AppearanceSettings";
+import { DashboardLayoutEditor } from "../components/DashboardLayoutEditor";
 import { updateMyProfile } from "../lib/queries";
 import type { EmbeddedMembership } from "../lib/queries";
 import { setEmailUpcomingEvents } from "../lib/rpc";
 import { fmtDate } from "../lib/date";
 import { APP_NAME, ORG_NAME, ROLE_LABEL } from "../lib/constants";
 import { useAuth } from "../hooks/useAuth";
-import { useDark } from "../hooks/useDark";
 import { usePrograms } from "../hooks/usePrograms";
 import { useReducedMotion } from "../hooks/useReducedMotion";
 
@@ -83,7 +82,7 @@ export function AccountSettingsScreen() {
           note="Who you are, how you sign in, how the app behaves for you, and what happens to your records."
         />
 
-        <div className="sticky top-0 z-10 bg-[var(--cue-page)] pt-1">
+        <div className="sticky top-0 z-10 bg-[var(--app-page-color)] pt-1">
           <SegmentedControl
             value={tab}
             onChange={setTab}
@@ -502,7 +501,6 @@ function SecurityTab() {
 /* -------------------------------------------------------------------------- */
 
 function PreferencesTab() {
-  const { dark, toggle } = useDark();
   const { preference, setPreference, reduced } = useReducedMotion();
   const app = usePrograms();
   const { toast } = useToast();
@@ -544,17 +542,9 @@ function PreferencesTab() {
 
   return (
     <div className="space-y-7">
-      <section>
-        <SectionTitle className="mb-3">Appearance</SectionTitle>
-        <List>
-          <Row
-            icon={dark ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
-            title="Dark mode"
-            subtitle={dark ? "On — easier at night" : "Off — follows your device"}
-            trailing={<Toggle checked={dark} onChange={toggle} label="Dark mode" />}
-          />
-        </List>
-      </section>
+      <AppearanceSettings />
+
+      <DashboardLayoutEditor />
 
       <section>
         <SectionTitle className="mb-3">Motion</SectionTitle>

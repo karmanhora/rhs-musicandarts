@@ -43,6 +43,37 @@ export interface Profile {
 }
 
 /**
+ * A person's own appearance choice. `system` follows the device, and is what a
+ * missing preferences row means.
+ */
+export type ThemeChoice = "system" | "light" | "dark";
+
+/** A built-in page treatment. Values mirror `BACKGROUNDS` in lib/personalization. */
+export type BackgroundId = "paper" | "raised" | "mint" | "ruled" | "grid";
+
+/** A dashboard block a person may show, hide or reorder. */
+export type DashboardModuleId =
+  | "coming_up"
+  | "my_attendance"
+  | "my_programs"
+  | "program_facts"
+  | "quick_links";
+
+/**
+ * One row of `profile_preferences` (20261025120000), as `my_preferences()`
+ * answers it. Not program-scoped: this is the person, not a membership, so it
+ * follows them between programs and devices.
+ */
+export interface ProfilePreferences {
+  theme: ThemeChoice;
+  background: BackgroundId;
+  /** Ordered; a block that is absent is hidden. The next-event panel is always shown. */
+  dashboard_modules: DashboardModuleId[];
+  /** When the guided setup was finished; null means it never was. */
+  onboarding_completed_at: string | null;
+}
+
+/**
  * One row of `list_program_roles()` (029). System roles carry a `key` matching
  * an `app_role` label; custom roles carry null and belong to one program.
  */

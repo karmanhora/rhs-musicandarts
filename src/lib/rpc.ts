@@ -6,6 +6,8 @@ import type {
   AttendanceAuditEntry,
   AttendanceReportResult,
   AttendanceStatus,
+  BackgroundId,
+  DashboardModuleId,
   MakeupEmailContext,
   MakeupEmailSendResponse,
   MyAbsenceRequestRow,
@@ -14,6 +16,7 @@ import type {
   RpcResult,
   SectionStatRow,
   TeacherAccessStatus,
+  ThemeChoice,
   TrendRow,
 } from "./types";
 
@@ -708,4 +711,57 @@ export async function sendMakeupEmailChunk(payload: {
     }
   }
   return { result: null, error: error.message };
+}
+
+// --- Per-person preferences (migration 20261025120000) -----------------------
+
+/**
+ * The caller's own appearance and dashboard choices.
+ *
+ * A missing row is not an error: the RPC answers with the shipped defaults, so
+ * the app never has to write a row just to read one. `data` is the raw jsonb —
+ * `parsePreferences()` in `lib/personalization.ts` is what turns it into
+ * something a screen can render, so this file stays free of the catalogue.
+ */
+export async function getMyPreferences(): Promise<{
+  data: Record<string, unknown> | null;
+  error: string | null;
+}> {
+  const { data, error } = await supabase.rpc("my_preferences");
+  if (error) return { data: null, error: error.message };
+
+  const payload = data as (Record<string, unknown> & { ok?: boolean; message?: string }) | null;
+  if (!payload || payload.ok !== true) {
+    return { data: null, error: payload?.message ?? "Could not read your preferences." };
+  }
+  return { data: payload, error: null };
+}
+
+/**
+ * Save one or more of the caller's own choices. Every field is optional and a
+ * field left out is left alone — the theme control, the background picker and
+ * the dashboard editor each send only what they change.
+ *
+ * The server validates against the same allow-lists this build renders from, so
+ * a refusal is a sentence rather than a silently ignored value.
+ */
+export async function setMyPreferences(patch: {
+  theme?: ThemeChoice | null;
+  background?: BackgroundId | null;
+  dashboardModules?: DashboardModuleId[] | null;
+  onboardingCompleted?: boolean | null;
+}): Promise<{ data: Record<string, unknown> | null; error: string | null }> {
+  const { data, error } = await supabase.rpc("set_my_preferences", {
+    p_theme: patch.theme ?? null,
+    p_background: patch.background ?? null,
+    p_dashboard_modules: patch.dashboardModules ?? null,
+    p_onboarding_completed: patch.onboardingCompleted ?? null,
+  });
+  if (error) return { data: null, error: error.message };
+
+  const payload = data as (Record<string, unknown> & { ok?: boolean; message?: string }) | null;
+  if (!payload || payload.ok !== true) {
+    return { data: null, error: payload?.message ?? "Your preferences could not be saved." };
+  }
+  return { data: payload, error: null };
 }

@@ -7,6 +7,7 @@ import { Alert, Button } from "./components/ui";
 import { LoadingQuote, MusicLoader } from "./components/Splash";
 import { LegalScreen } from "./screens/LegalScreen";
 import { ProgramsProvider, usePrograms } from "./hooks/usePrograms";
+import { PreferencesProvider } from "./hooks/usePreferences";
 import { AvatarUrlProvider } from "./hooks/useAvatars";
 import type { PermissionCode } from "./lib/permissions";
 
@@ -55,6 +56,9 @@ const TeacherVerifyScreen = lazy(() =>
   import("./screens/TeacherVerifyScreen").then((module) => ({
     default: module.TeacherVerifyScreen,
   }))
+);
+const SetupScreen = lazy(() =>
+  import("./screens/SetupScreen").then((module) => ({ default: module.SetupScreen }))
 );
 
 function RouteSkeleton() {
@@ -248,6 +252,17 @@ function ProgramRoutes() {
           }
         />
         <Route path="/settings" element={<AccountSettingsScreen />} />
+        {/* The guided setup. Gated on the capability that actually manages this
+            program, so a student or a section leader never reaches it even by
+            typing the URL. It is skippable and never blocks the app. */}
+        <Route
+          path="/setup"
+          element={
+            <PermissionGate permission="program.manage_settings">
+              <SetupScreen />
+            </PermissionGate>
+          }
+        />
         <Route
           path="/roles"
           element={
@@ -270,13 +285,17 @@ function ProgramRoutes() {
 export default function SignedInApp() {
   return (
     <ProgramsProvider>
-      {/* Private avatar paths are resolved to signed URLs once per screen, so
-          the provider wraps everything that can render an `Avatar`. */}
-      <AvatarUrlProvider>
-        <Suspense fallback={<RouteSkeleton />}>
-          <ProgramRoutes />
-        </Suspense>
-      </AvatarUrlProvider>
+      {/* Personal appearance and dashboard choices. Above the avatar provider
+          because the shell paints from them and every screen may ask. */}
+      <PreferencesProvider>
+        {/* Private avatar paths are resolved to signed URLs once per screen, so
+            the provider wraps everything that can render an `Avatar`. */}
+        <AvatarUrlProvider>
+          <Suspense fallback={<RouteSkeleton />}>
+            <ProgramRoutes />
+          </Suspense>
+        </AvatarUrlProvider>
+      </PreferencesProvider>
     </ProgramsProvider>
   );
 }

@@ -9,6 +9,7 @@ import {
   ClipboardCheck,
   Home,
   KeyRound,
+  LayoutDashboard,
   LogOut,
   Moon,
   QrCode,
@@ -23,6 +24,7 @@ import { APP_NAME, ORG_NAME, ROLE_LABEL } from "../lib/constants";
 import { usePrograms } from "../hooks/usePrograms";
 import { useAuth } from "../hooks/useAuth";
 import { useDark } from "../hooks/useDark";
+import { usePreferences } from "../hooks/usePreferences";
 import { ProgramSwitcher } from "./ProgramSwitcher";
 import { NotificationCenter } from "./NotificationCenter";
 import {
@@ -70,7 +72,13 @@ function navItems(opts: { isStaff: boolean; isDirector: boolean }): NavItem[] {
 export function AppShell() {
   const app = usePrograms();
   const auth = useAuth();
-  const { dark, toggle } = useDark();
+  const { dark } = useDark();
+  /**
+   * The masthead toggle writes the *saved* theme rather than flipping a local
+   * flag, so the choice follows the person to another device. `useDark` still
+   * paints it immediately — `usePreferences` applies before it requests.
+   */
+  const { save: savePreferences } = usePreferences();
   const navigate = useNavigate();
   const [bellOpen, setBellOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
@@ -122,9 +130,9 @@ export function AppShell() {
   const under = [roleName, app.membership?.section?.name].filter(Boolean).join(" · ");
 
   return (
-    <div className="app-shell flex h-full flex-col bg-[var(--cue-page)]">
+    <div className="app-shell app-page flex h-full flex-col">
       {/* --- masthead: the umbrella, then the program you are actually in --- */}
-      <header className="safe-t sticky top-0 z-30 shrink-0 border-b border-[var(--cue-line)] bg-[var(--cue-page)]">
+      <header className="safe-t sticky top-0 z-30 shrink-0 border-b border-[var(--cue-line)] bg-[var(--app-page-color)]">
         {/* `safe-t` owns the top padding, so this sets the other three edges. */}
         <div className="mx-auto flex min-h-14 max-w-6xl items-center gap-2 px-3 pb-2 sm:px-5">
           <div className="min-w-0 flex-1">
@@ -222,7 +230,7 @@ export function AppShell() {
           </span>
           <IconButton
             label={dark ? "Use light mode" : "Use dark mode"}
-            onClick={toggle}
+            onClick={() => void savePreferences({ theme: dark ? "light" : "dark" })}
             variant="ghost"
             className="h-11 w-11"
             icon={dark ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
@@ -284,7 +292,7 @@ export function AppShell() {
       {/* --- bottom nav: the same five destinations, a rule above the one you're on --- */}
       <nav
         aria-label="Main navigation"
-        className="safe-b z-30 shrink-0 border-t border-[var(--cue-line)] bg-[var(--cue-page)] lg:hidden"
+        className="safe-b z-30 shrink-0 border-t border-[var(--cue-line)] bg-[var(--app-page-color)] lg:hidden"
       >
         <ul className="flex items-stretch">
           {items.map((item) => (
@@ -333,8 +341,17 @@ export function AppShell() {
 function AccountSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
   const app = usePrograms();
   const auth = useAuth();
+  const prefs = usePreferences();
   const navigate = useNavigate();
   const [signingOut, setSigningOut] = useState(false);
+
+  /**
+   * Setup is offered until it is finished, and only to somebody the server says
+   * can manage this program. Nothing is hidden from them once it is done — the
+   * wizard is a first-run convenience, not a door.
+   */
+  const offersSetup =
+    app.can("program.manage_settings") && !prefs.preferences.onboarding_completed_at;
 
   const name = app.profile?.display_name || app.profile?.full_name || "Member";
 
@@ -358,6 +375,15 @@ function AccountSheet({ open, onClose }: { open: boolean; onClose: () => void })
         </div>
 
         <List>
+          {offersSetup ? (
+            <Row
+              icon={<LayoutDashboard className="h-4 w-4" />}
+              title="Finish setting up"
+              subtitle="The join code, your sections and your own workspace"
+              trailing={<ChevronRight aria-hidden="true" className="h-4 w-4 text-[var(--cue-subtle)]" />}
+              onClick={() => go("/setup")}
+            />
+          ) : null}
           <Row
             icon={<User className="h-4 w-4" />}
             title="Profile"

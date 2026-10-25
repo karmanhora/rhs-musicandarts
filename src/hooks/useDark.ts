@@ -1,54 +1,35 @@
 import { useCallback, useEffect, useState } from "react";
-
-const KEY = "rhs-band:dark";
-const EVENT = "rhs-band:dark-changed";
-
-function preferred(): boolean {
-  try {
-    const stored = localStorage.getItem(KEY);
-    if (stored === "true") return true;
-    if (stored === "false") return false;
-  } catch {
-    /* private mode — fall through to the OS preference */
-  }
-  return window.matchMedia?.("(prefers-color-scheme: dark)").matches ?? false;
-}
-
-function paint(dark: boolean): void {
-  document.documentElement.classList.toggle("dark", dark);
-  document
-    .querySelector('meta[name="theme-color"]')
-    ?.setAttribute("content", dark ? "#0c0f0a" : "#2d5a1b");
-  // Let the browser tint form controls / scrollbars to match.
-  document.documentElement.style.colorScheme = dark ? "dark" : "light";
-}
+import { DARK_EVENT, paintDark, preferredDark, setDarkPreference } from "../lib/personalization";
 
 /**
- * Dark mode is a class on <html> (see index.css). Every instance listens for the
- * change event so the shell's toggle and any screen-level toggle stay in sync.
+ * Dark mode is a class on <html> (see index.css), decided by the person's saved
+ * theme and, when they chose "follow device", by the operating system.
+ *
+ * The storage key, the paint and the change event all live in
+ * `lib/personalization.ts` and are shared with the pre-paint script in
+ * `index.html` and with `usePreferences`. This hook is only the React view of
+ * them: it reads the current value, repaints when that value changes, and lets a
+ * masthead toggle ask for the other one.
+ *
+ * Every instance listens for the change event, so the shell's toggle, the
+ * account sheet and the settings screen stay in step.
  */
 export function useDark(): { dark: boolean; toggle: () => void } {
   const [dark, setDark] = useState<boolean>(() =>
-    typeof window === "undefined" ? false : preferred()
+    typeof window === "undefined" ? false : preferredDark()
   );
 
   useEffect(() => {
-    paint(dark);
-    const onChange = () => setDark(preferred());
-    window.addEventListener(EVENT, onChange);
-    return () => window.removeEventListener(EVENT, onChange);
+    paintDark(dark);
+    const onChange = () => setDark(preferredDark());
+    window.addEventListener(DARK_EVENT, onChange);
+    return () => window.removeEventListener(DARK_EVENT, onChange);
   }, [dark]);
 
   const toggle = useCallback(() => {
-    const next = !preferred();
-    try {
-      localStorage.setItem(KEY, String(next));
-    } catch {
-      /* ignore — the class still flips for this session */
-    }
-    paint(next);
-    window.dispatchEvent(new Event(EVENT));
-    setDark(next);
+    // Writes the stored value *and* paints, so the very next frame is correct
+    // even before this component re-renders.
+    setDarkPreference(!preferredDark());
   }, []);
 
   return { dark, toggle };

@@ -55,6 +55,7 @@ history too, not instructions.
 | **The school's logo artwork** | Removed on request 2026-10-09; an original placeholder ships in `public/logo.svg` | [BRAND_ASSETS.md](docs/BRAND_ASSETS.md) |
 | **A second program's data, screens or copy** (Orchestra, Choir, Drama, …) | Deferred, **not rejected** — nothing is seeded until the owner says work has started | [PLATFORM_PLAN.md §11](docs/PLATFORM_PLAN.md) |
 | **A program-admin console** | Deferred. One `program_admins` account now reaches every program's existing screens (owner request 2026-10-24); a dedicated cross-program console is still unbuilt | [FEATURE_DECISIONS.md §1](docs/FEATURE_DECISIONS.md), [20261025010444_system_administrator_grant.sql](supabase/migrations/20261025010444_system_administrator_grant.sql) |
+| **A program-wide default appearance** | Deferred. `ensemble_theme_tokens` is the program palette and is read-only to clients; each person's own theme and background live in `profile_preferences` | [FEATURE_DECISIONS.md §3](docs/FEATURE_DECISIONS.md), [20261025120000_profile_preferences.sql](supabase/migrations/20261025120000_profile_preferences.sql) |
 | **Changes to legal copy**, including the Privacy Policy Contact section | Owner-controlled; the docs and the shipped page currently disagree (see FEATURE_DECISIONS) | [WEBSITE_LEGAL_CHANGES.md](docs/privacy/WEBSITE_LEGAL_CHANGES.md) |
 
 Anything in that table is an owner decision, not a technical obstacle. If a task
@@ -100,6 +101,10 @@ Vercel deployment are read-only, forever ([DEV.md §5](docs/DEV.md)).
 - Never invent an RPC or a table column. If the database lacks it, add a
   migration.
 - Say "program" in the interface; `ensemble` is a database word only.
+- A person's theme, page background, dashboard blocks and setup state live in
+  `profile_preferences` (migration 20261025120000) — never in
+  `ensemble_theme_tokens`, which is the program palette and stays read-only to
+  clients. There is no program-wide default appearance.
 - Confirmations use `ConfirmSheet`, never `window.confirm`.
 - Mobile first: 44px minimum targets, `Sheet` over a desktop modal.
 - Colour, type and layout come from [DESIGN_SYSTEM.md](docs/DESIGN_SYSTEM.md):

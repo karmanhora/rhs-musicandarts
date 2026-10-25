@@ -154,3 +154,50 @@ stays inside these limits:
   shaders, and a headless harness renders the real `notes.wgsl` on an adapter and
   asserts on the readback: coverage, palette variety, vertex-shader motion, the
   calm fade, the pointer push, the click burst and its expiry.
+
+## Page treatments (personal background)
+
+Account settings → Preferences offers four page treatments, stored per person in
+`profile_preferences.background` (migration 20261025120000). A treatment is one
+attribute on `<html>` — `data-background` — that `src/index.css` turns into
+`--app-page-color` and `--app-page-image`; `.app-page` on the signed-in shell
+paints them. `src/lib/personalization.ts` is the catalogue, and the database's
+allow-list mirrors it.
+
+| id | What it is | Where the colour comes from |
+| --- | --- | --- |
+| `paper` | the shipped page | `--cue-page` |
+| `mint` | a green wash behind the panels | `--cue-leaf-soft` |
+| `ruled` | 1px rules every 32px | `--cue-line` on `--cue-page` |
+| `grid` | a 1px grid every 32px | `--cue-line` on `--cue-page` |
+
+Rules, and the reasons for them:
+
+- **Tokens only.** Each treatment names an existing variable; nothing here adds a
+  hex value or a second palette. Both themes follow automatically.
+- **No gradient, glow, blur or image.** The two patterns are single-colour lines
+  with hard stops from the same `--cue-line` token as every hairline in the app.
+  Below a panel it reads as a rule, which is the design system's own vocabulary.
+- **Panels stay opaque.** `--cue-panel` is untouched, so a treatment never sits
+  behind a name, a form, a roster row or a QR code. Nothing moves under text.
+- **There is no "raised" treatment.** `--cue-leaf` (the colour of the page's text
+  links) measures 4.47:1 on `--cue-raised`, under AA, so that surface is not
+  offered as a page rather than shipped failing.
+- **Contrast was measured, not assumed.** On the surfaces a treatment uses, in
+  light: ink 16.13:1 on paper and 15.20:1 on mint; muted 5.63:1 on raised and
+  5.71:1 on mint; subtle 4.99:1 on paper, 4.64:1 on raised and 4.71:1 on mint;
+  leaf 4.81:1 on paper and 4.53:1 on mint. `--cue-subtle` was deepened from
+  `#697268` to `#636c63` for the raised and mint cases (it had measured 4.25:1
+  and 4.31:1 there). Dark-mode pairs are 7.39:1 or better for muted, and 4.74:1
+  or better for subtle, on the same surfaces.
+- **The first frame is already themed.** `index.html` reads the cached treatment
+  (and the cached light/dark choice) before React starts, so a reload never
+  flashes paper over a chosen background. The cache is per device and is cleared
+  when the session ends — on a shared phone the next person never sees the last
+  one's page.
+- **Previews are the real thing.** A picker swatch is a `.app-page` element with
+  that treatment's own `data-background`, so it is the same CSS that will be
+  applied, in the theme currently on screen.
+- **Scope is the signed-in shell.** The public pages, the splash and the
+  full-screen check-in keep their own surfaces: a page treatment must never
+  compete with a QR code, a form or the brand panel.

@@ -300,6 +300,7 @@ const RPC_RESULTS = {
   /** The fixture persona is not a system administrator (`program_admins`). */
   is_program_admin: false,
   my_permissions: { ok: true, permissions },
+
   get_my_attendance_pct: 92,
   get_my_attendance_trend: [
     { month: "2026-08", pct: 88 },
@@ -525,6 +526,20 @@ function json(route, body, status = 200) {
 }
 
 export function routeSupabase(page) {
+  /** The fixture persona has no preferences row, so this is the shipped default. */
+  const preferences = {
+    theme: "system",
+    background: "paper",
+    dashboard_modules: [
+      "coming_up",
+      "my_attendance",
+      "my_programs",
+      "program_facts",
+      "quick_links",
+    ],
+    onboarding_completed_at: null,
+  };
+
   return page.route(`${SUPABASE_HOST}/**`, async (route) => {
     const url = new URL(route.request().url());
     const path = url.pathname;
@@ -540,6 +555,26 @@ export function routeSupabase(page) {
 
     if (path.startsWith("/rest/v1/rpc/")) {
       const fn = path.slice("/rest/v1/rpc/".length);
+
+      // Preferences (migration 20261025120000) are stateful within a page:
+      // the screen saves one field and reads the merged answer back, exactly
+      // like the real RPC. A per-page copy keeps that honest across navigation.
+      if (fn === "my_preferences" || fn === "set_my_preferences") {
+        if (fn === "set_my_preferences") {
+          const patch = route.request().postDataJSON() ?? {};
+          if (typeof patch.p_theme === "string") preferences.theme = patch.p_theme;
+          if (typeof patch.p_background === "string") preferences.background = patch.p_background;
+          if (Array.isArray(patch.p_dashboard_modules)) {
+            preferences.dashboard_modules = patch.p_dashboard_modules;
+          }
+          if (patch.p_onboarding_completed === true) {
+            preferences.onboarding_completed_at ??= "2026-10-25T00:00:00.000Z";
+          }
+          if (patch.p_onboarding_completed === false) preferences.onboarding_completed_at = null;
+        }
+        return json(route, { ok: true, ...preferences });
+      }
+
       if (fn in RPC_RESULTS) return json(route, RPC_RESULTS[fn]);
       return json(route, LIST_RPCS.has(fn) ? [] : { ok: true });
     }

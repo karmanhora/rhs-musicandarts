@@ -49,9 +49,12 @@
   --cue-muted: #575f57;
   /* Slightly deeper than a hairline grey on purpose: this token carries real
    * text (the masthead's organisation line, input placeholders), and at #7f877f
-   * it measured 3.4:1 on the page — below AA. #697268 clears 4.5:1 on both the
-   * page and a panel while still reading as secondary. */
-  --cue-subtle: #697268;
+   * it measured 3.4:1 on the page — below AA. #697268 fixed the page (4.58:1)
+   * but measured only 4.25:1 on `--cue-raised` and 4.31:1 on `--cue-leaf-soft`,
+   * both of which a page treatment can put it on. #636c63 clears 4.5:1 on every
+   * surface a treatment uses — page 4.99, raised 4.64, mint 4.71 — and still
+   * reads as secondary. Measured, not eyeballed (docs/DESIGN_SYSTEM.md). */
+  --cue-subtle: #636c63;
   --cue-line: #ddd9cc;
   --cue-border: var(--cue-line);
   --cue-line-strong: #c3bfb0;
@@ -389,11 +392,74 @@ body {
   font-size: 0.9375rem;
   line-height: 1.5;
   color: var(--cue-ink);
-  background: var(--cue-page);
+  background: var(--app-page-color);
   -webkit-font-smoothing: antialiased;
   /* The app scrolls inside its own panes; don't rubber-band the whole page. */
   overscroll-behavior-y: none;
   -webkit-tap-highlight-color: transparent;
+}
+
+/*
+ * Page treatments.
+ *
+ * A person's background (Account settings → Preferences) is one attribute on
+ * <html>, `data-background`, and these rules turn it into a page colour and —
+ * for two of the five — hairline rules. Deliberate limits:
+ *
+ *   * Every colour is an existing token, so both themes stay legible and the
+ *     treatments follow a program's palette. Nothing here hardcodes a hex.
+ *   * The patterns are single-colour lines with hard stops, not blends. The
+ *     design system forbids gradients and glow; a ruled page is a rule, and it
+ *     is drawn from `--cue-line`, the same token every hairline in the app uses.
+ *   * 32px spacing is a multiple of the 4px scale and coarse enough not to
+ *     shimmer while scrolling.
+ *   * Panels stay opaque (`--cue-panel`), so a treatment never sits behind text,
+ *     a roster row, a form or a QR code.
+ *
+ * `index.html` sets the same attribute before React starts, which is what stops
+ * a saved background from flashing paper for one frame.
+ */
+:root {
+  --app-page-color: var(--cue-page);
+  --app-page-image: none;
+}
+
+[data-background="mint"] {
+  --app-page-color: var(--cue-leaf-soft);
+}
+
+[data-background="ruled"] {
+  --app-page-image: repeating-linear-gradient(
+    to bottom,
+    var(--cue-line) 0,
+    var(--cue-line) 1px,
+    transparent 1px,
+    transparent 32px
+  );
+}
+
+[data-background="grid"] {
+  --app-page-image:
+    repeating-linear-gradient(
+      to right,
+      var(--cue-line) 0,
+      var(--cue-line) 1px,
+      transparent 1px,
+      transparent 32px
+    ),
+    repeating-linear-gradient(
+      to bottom,
+      var(--cue-line) 0,
+      var(--cue-line) 1px,
+      transparent 1px,
+      transparent 32px
+    );
+}
+
+/* The signed-in shell's page surface. Public screens keep plain paper. */
+.app-page {
+  background-color: var(--app-page-color);
+  background-image: var(--app-page-image);
 }
 
 /*
