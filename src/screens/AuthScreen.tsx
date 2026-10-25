@@ -84,11 +84,22 @@ export function AuthScreen({ mode }: { mode: AuthMode }) {
     return readAuthAudience();
   });
 
-  const [email, setEmail] = useState("");
+  // An address handed over from another auth screen (`/sign-in?email=…`) — the
+  // "sign in instead" step after a sign-up met an existing account, or after a
+  // confirmation link turned out to be spent. Nobody should retype it.
+  const [email, setEmail] = useState(() => params.get("email")?.trim() ?? "");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /**
+   * Guidance, not a failure: "that email already has an account", "that code is
+   * spent, use your password". Warn-toned and never phrased as the person's
+   * mistake, because these are ordinary states of signing up, not errors.
+   */
+  const [notice, setNotice] = useState<string | null>(null);
+  /** Sign-up found an existing account; offer the sign-in door explicitly. */
+  const [existingAccount, setExistingAccount] = useState(false);
   /** Sign-up with confirmation switched on: nothing to do but check the inbox. */
   const [awaitingEmail, setAwaitingEmail] = useState(false);
   /** The one error that has an action attached ("Resend the link"). */
@@ -108,9 +119,11 @@ export function AuthScreen({ mode }: { mode: AuthMode }) {
   // Moving between modes must never carry an error or a half-filled form across.
   useEffect(() => {
     setError(null);
+    setNotice(null);
     setPassword("");
     setConfirm("");
     setNeedsConfirmation(false);
+    setExistingAccount(false);
     setSent(false);
     setAwaitingEmail(false);
     setCode("");
@@ -130,7 +143,9 @@ export function AuthScreen({ mode }: { mode: AuthMode }) {
   async function submit(e: FormEvent) {
     e.preventDefault();
     setError(null);
+    setNotice(null);
     setNeedsConfirmation(false);
+    setExistingAccount(false);
 
     if ((mode === "sign-up" || mode === "reset") && password !== confirm) {
       setError("Those two passwords don't match.");
@@ -152,10 +167,24 @@ export function AuthScreen({ mode }: { mode: AuthMode }) {
     }
 
     if (mode === "sign-up") {
-      const { error: failure, needsConfirmation } = await auth.signUp(email, password, audience);
+      const { error: failure, needsConfirmation, existingAccount: already } = await auth.signUp(
+        email,
+        password,
+        audience
+      );
       setBusy(false);
       if (failure) {
         setError(failure);
+        return;
+      }
+      if (already) {
+        // Not a fault: this address is already registered. Say which door to
+        // use and carry the address over, rather than "check your email" for a
+        // message Supabase deliberately does not send.
+        setExistingAccount(true);
+        setNotice(
+          "That email already has an account. Sign in with your password — or reset it if you don't remember it."
+        );
         return;
       }
       if (needsConfirmation) setAwaitingEmail(true);
@@ -197,27 +226,64 @@ export function AuthScreen({ mode }: { mode: AuthMode }) {
   }
 
   /**
-   * The confirmation link is single-use. If a mail scanner (or a second tap)
-   * has already spent it, the code in the same email is still valid — that is
-   * what the template's "or type this code" line is for. The project's
-   * `mailer_otp_length` is 8, so accept up to 10 rather than assuming six.
+   * Confirm with the code instead of the link.
+   *
+   * Three things this gets right, because each used to be an error on screen:
+   *
+   *   1. The code needs the address it was sent to. Asking the server without
+   *      one answered "Only an email address or phone number should be provided
+   *      on verify" — a raw API sentence in a red alert.
+   *   2. The link and the code are the same one-time token, so using one spends
+   *      the other. A spent token means the address is confirmed already: try
+   *      the password we already have, and say so when that does not work.
+   *   3. Its length is the project's `mailer_otp_length` (8 here), so accept up
+   *      to 10 digits rather than assuming six.
    */
   async function confirmWithCode() {
     setError(null);
+    setNotice(null);
+
+    const address = email.trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(address)) {
+      setNotice("Enter the email address you signed up with, then the code below.");
+      return;
+    }
+
     const clean = code.replace(/\s+/g, "");
     if (!/^\d{4,10}$/.test(clean)) {
-      setError("Enter the code from the confirmation email.");
+      setNotice("Enter the code from the confirmation email.");
       return;
     }
+
     setCodeBusy(true);
-    const { error: failure } = await auth.confirmEmail(email, clean);
+    const { error: failure, spent } = await auth.confirmEmail(address, clean);
     setCodeBusy(false);
-    if (failure) {
-      setError(failure);
+    if (!failure) {
+      toast.success("Email confirmed.");
+      navigate(afterAuth ?? "/", { replace: true });
       return;
     }
-    toast.success("Email confirmed.");
-    navigate(afterAuth ?? "/", { replace: true });
+
+    if (spent) {
+      // The address is almost certainly confirmed already (that is what spends
+      // the token), so a password that is already typed should just work.
+      if (password) {
+        setCodeBusy(true);
+        const { error: signInFailure } = await auth.signIn(address, password);
+        setCodeBusy(false);
+        if (!signInFailure) {
+          toast.success("Your email is confirmed — welcome in.");
+          navigate(afterAuth ?? "/", { replace: true });
+          return;
+        }
+      }
+      setNotice(
+        "That code has already been used or has expired. A used link means your email is confirmed — sign in with your password to continue, or send yourself a new link."
+      );
+      return;
+    }
+
+    setError(failure);
   }
 
   async function continueWithGoogle() {
@@ -272,7 +338,8 @@ export function AuthScreen({ mode }: { mode: AuthMode }) {
     <div className="rounded-[var(--radius-panel)] border border-[var(--cue-line)] bg-[var(--cue-raised)] p-4">
       <p className="type-label text-[var(--cue-green)]">Have the code?</p>
       <p className="type-meta mt-1">
-        Type the code from the same email. It still works after the link has been opened.
+        The link and this code are the same one-time pass — whichever you use first uses it up.
+        {mode === "sign-in" ? " Enter your email above, then the code." : null}
       </p>
       <div className="mt-3 space-y-3">
         <Field label="Confirmation code">
@@ -316,14 +383,22 @@ export function AuthScreen({ mode }: { mode: AuthMode }) {
             <Alert tone="error">{error}</Alert>
           </div>
         ) : null}
+        {notice ? (
+          <div className="mt-4">
+            <Alert tone="warn">{notice}</Alert>
+          </div>
+        ) : null}
         <div className="mt-4">{codeEntry}</div>
         <div className="mt-6 space-y-3">
           <Button block variant="secondary" loading={busy} onClick={() => void resend()}>
             Send it again
           </Button>
-          <Link to="/sign-in" className="block">
+          <Link
+            to={`/sign-in?email=${encodeURIComponent(email.trim())}`}
+            className="block"
+          >
             <Button block variant="ghost">
-              Back to sign in
+              Sign in instead
             </Button>
           </Link>
         </div>
@@ -403,6 +478,17 @@ export function AuthScreen({ mode }: { mode: AuthMode }) {
           <Alert tone="warn">{auth.authLinkError}</Alert>
         ) : null}
         {error ? <Alert tone="error">{error}</Alert> : null}
+        {notice ? <Alert tone="warn">{notice}</Alert> : null}
+        {existingAccount ? (
+          <Link
+            to={`/sign-in?email=${encodeURIComponent(email.trim())}`}
+            className="block"
+          >
+            <Button block variant="secondary">
+              Go to sign in
+            </Button>
+          </Link>
+        ) : null}
 
         <Field label="Email">
           <Input
@@ -470,8 +556,14 @@ export function AuthScreen({ mode }: { mode: AuthMode }) {
           </Button>
         ) : null}
 
-        {isSignIn && (auth.authLinkError || needsConfirmation) ? codeEntry : null}
       </form>
+
+      {/* The code panel sits outside the form: inside it, pressing Enter in the
+          code field submitted the *sign-in* form instead, which answered with a
+          password error for a password nobody had typed yet. */}
+      {isSignIn && (auth.authLinkError || needsConfirmation) ? (
+        <div className="mt-4">{codeEntry}</div>
+      ) : null}
 
       {supportsGoogle ? (
         <>

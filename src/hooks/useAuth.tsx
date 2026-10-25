@@ -60,18 +60,36 @@ export interface AuthState {
     password: string,
     audience: AuthAudience,
     displayName?: string
-  ) => Promise<{ error: string | null; needsConfirmation: boolean }>;
+  ) => Promise<{
+    error: string | null;
+    needsConfirmation: boolean;
+    /**
+     * The address already has an account. Supabase answers that case with no
+     * error and no session (so a stranger cannot probe which addresses are
+     * registered), which is why the form has to say something rather than
+     * leaving the person waiting for an email that will never arrive.
+     */
+    existingAccount: boolean;
+  }>;
   signOut: () => Promise<void>;
   sendPasswordReset: (email: string) => Promise<{ error: string | null }>;
   /** Re-send the sign-up confirmation; email confirmation is on for this project. */
   resendConfirmation: (email: string) => Promise<{ error: string | null }>;
   /**
-   * Confirm with the `{{ .Token }}` code from the confirmation email. The
-   * link in that email is single-use, and a mail scanner or a second click can
-   * spend it; the code is the fallback the template promises. Its length is the
-   * project's `mailer_otp_length` (8 on this project), so never hardcode six.
+   * Confirm with the `{{ .Token }}` code from the confirmation email. Its length
+   * is the project's `mailer_otp_length` (8 on this project), so never hardcode
+   * six.
+   *
+   * `spent` says the refusal was "already used or expired" rather than a wrong
+   * code. The link and the code are the *same* one-time token: whichever a mail
+   * scanner, a second tap or the person themselves uses first spends the other.
+   * A spent token normally means the address is confirmed already, so the caller
+   * can try the password instead of showing an error.
    */
-  confirmEmail: (email: string, code: string) => Promise<{ error: string | null }>;
+  confirmEmail: (
+    email: string,
+    code: string
+  ) => Promise<{ error: string | null; spent: boolean }>;
   updatePassword: (password: string) => Promise<{ error: string | null }>;
   /**
    * Start a change of the sign-in email. Supabase Auth owns the address, so
@@ -126,10 +144,13 @@ function readable(message: string): string {
     [
       /error sending [a-z ]*email/i,
       "We couldn't send that email — that's on our side, not your account. Try again in a minute, or use Continue with Google with this same address to get in now.",
+    ],    [
+      /token has expired|invalid.*(token|otp)|otp.*(expired|invalid)|one-time token not found/i,
+      "That code has already been used, or it has expired. If your address is confirmed, sign in with your password instead.",
     ],
     [
-      /token has expired|invalid.*(token|otp)|otp.*(expired|invalid)/i,
-      "That code is wrong or has expired. Check the email, or send yourself a new one.",
+      /only an email address or phone number should be provided on verify/i,
+      "Enter the email address you signed up with, then the code.",
     ],
     [
       /security purposes|only request this after/i,
@@ -174,7 +195,7 @@ function takeExpiredLinkNotice(): string | null {
   url.hash = hash.toString();
   window.history.replaceState(window.history.state, "", url.toString());
 
-  return "That email link has already been used or has expired. If your address is already confirmed, sign in below. If not, the code from the same email still works — or send yourself a new link.";
+  return "That email link has already been used or has expired. If your address is already confirmed — a used link means it is — sign in below. Otherwise send yourself a new link.";
 }
 
 const initialAuthLinkError = takeExpiredLinkNotice();
@@ -292,10 +313,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           emailRedirectTo: `${window.location.origin}/`,
         },
       });
-      if (error) return { error: readable(error.message), needsConfirmation: false };
-      // With email confirmation on (this project's setting) `signUp` returns
-      // no session, so the person has to confirm before they can sign in.
-      return { error: null, needsConfirmation: !data.session };
+      if (error) {
+        return {
+          error: readable(error.message),
+          needsConfirmation: false,
+          // "User already registered" is the disclosure Supabase makes for a
+          // *confirmed* address; the form turns it into a sign-in offer.
+          existingAccount: /already registered/i.test(error.message),
+        };
+      }
+
+      // With email confirmation on (this project's setting) `signUp` returns no
+      // session, so the person has to confirm before they can sign in. For an
+      // address that already exists — and is still unconfirmed — it returns a
+      // user with an empty `identities` list and sends nothing at all; that is
+      // the anti-enumeration answer, and treating it as "check your email"
+      // would leave somebody waiting for a mail that was never sent.
+      const existingAccount =
+        !data.session && Array.isArray(data.user?.identities) && data.user.identities.length === 0;
+
+      return {
+        error: null,
+        needsConfirmation: !data.session && !existingAccount,
+        existingAccount,
+      };
     },
     []
   );
@@ -334,7 +375,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       token: code.replace(/\s+/g, ""),
       type: "signup",
     });
-    return { error: error ? readable(error.message) : null };
+    if (!error) return { error: null, spent: false };
+    return {
+      error: readable(error.message),
+      spent: /expired|invalid|not found/i.test(error.message) || /otp_expired/.test(error.message),
+    };
   }, []);
 
   const updatePassword = useCallback(async (password: string) => {

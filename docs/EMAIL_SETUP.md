@@ -201,14 +201,19 @@ migration that depends on it.
 - A confirmation that arrives but whose link does nothing is almost always a
   redirect-URL problem, not a template one. A missing subject line means the
   template was saved without its subject.
-- **A confirmation link is single-use.** A mail-security scanner, a link preview
-  or a second tap can spend it before the person does; the next request lands on
-  the Site URL with `#error=access_denied&error_code=otp_expired`, while the
-  account is already confirmed and password sign-in works. The app catches that
-  code, sends the person to `/sign-in`, and says so. The confirmation email also
-  carries `{{ .Token }}`, and the sign-in screen accepts it. This project's
-  `mailer_otp_length` is **8**, not the default 6, so the field accepts 4–10
-  digits — do not hardcode a length.
+- **A confirmation link is single-use, and it and `{{ .Token }}` are the same
+  one-time pass.** A mail-security scanner, a link preview, a second tap — or
+  the person typing the code after opening the link — spends it; the next
+  request lands on the Site URL with `#error=access_denied&error_code=otp_expired`,
+  while the account is already confirmed and password sign-in works. The app
+  catches that code, sends the person to `/sign-in`, and says so. Typing a spent
+  code is treated as *that* — not as a wrong code: if a password is already in
+  the form, the app signs the person in with it rather than showing an error.
+  The code panel asks for the email address before calling the server, because
+  `verifyOtp` without one answers with the raw sentence "Only an email address or
+  phone number should be provided on verify". This project's `mailer_otp_length`
+  is **8**, not the default 6, so the field accepts 4–10 digits — do not hardcode
+  a length.
 
 ## 6. What this does not cover
 
