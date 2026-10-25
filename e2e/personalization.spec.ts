@@ -204,6 +204,31 @@ test.describe("personal appearance and dashboard", () => {
     }
   });
 
+  test("the prompt can be reopened from settings without being consumed", async ({ page }) => {
+    await installMocks(page, true);
+    const saves: Record<string, unknown>[] = [];
+    await page.route("**/rest/v1/rpc/set_my_preferences", async (route) => {
+      saves.push((route.request().postDataJSON() ?? {}) as Record<string, unknown>);
+      await route.fallback();
+    });
+
+    await page.goto("/settings");
+    await page.getByRole("tab", { name: "Preferences" }).click();
+    await page.getByRole("button", { name: "Open the prompt" }).click();
+
+    const sheet = page.getByRole("dialog");
+    await expect(sheet.getByText("Make it yours")).toBeVisible();
+    await sheet.getByRole("radio", { name: /Rehearsal/ }).click();
+    await expect(page.locator("html")).toHaveAttribute("data-background", "mint");
+
+    await sheet.getByRole("button", { name: "Done" }).click();
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+
+    // Reopening is not answering: the first-run stamp is untouched, so this
+    // cannot decide whether the offer appears for somebody who never met it.
+    expect(saves.some((patch) => patch.p_personalize_seen === true)).toBe(false);
+  });
+
   test("hiding a dashboard block removes it and keeps it hidden", async ({ page }) => {
     await installMocks(page, true);
     await serveUpcomingEvents(page);

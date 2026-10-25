@@ -1,6 +1,7 @@
 import { RotateCcw } from "lucide-react";
 import { Alert, Button, Card, Field, SectionTitle, SegmentedControl, useToast } from "./ui";
 import { BackgroundPicker } from "./BackgroundPicker";
+import { AppearancePromptButton } from "./PersonalizationPrompt";
 import type { BackgroundId, ThemeChoice } from "../lib/types";
 import { usePreferences } from "../hooks/usePreferences";
 
@@ -77,18 +78,24 @@ export function AppearanceSettings() {
         </div>
 
         <div className="border-t border-[var(--cue-line)] pt-4">
-          <Button
-            size="sm"
-            variant="secondary"
-            loading={saving}
-            icon={<RotateCcw className="h-4 w-4" />}
-            onClick={() => void restore()}
-          >
-            Reset appearance
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              size="sm"
+              variant="secondary"
+              loading={saving}
+              icon={<RotateCcw className="h-4 w-4" />}
+              onClick={() => void restore()}
+            >
+              Reset appearance
+            </Button>
+            {/* The same two choices, in the sheet a new member meets after
+                joining. Reopening writes no setup state. */}
+            <AppearancePromptButton />
+          </div>
           <p className="type-meta mt-2">
-            Puts the theme back to your device&rsquo;s and the page back to paper. Your dashboard
-            blocks return to the default order too.
+            Reset puts the theme back to your device&rsquo;s and the page back to paper, and returns
+            your dashboard blocks to the default order. The prompt is the two-choice sheet a new
+            member is offered after joining — reopen it to choose again in one place.
           </p>
         </div>
       </Card>
