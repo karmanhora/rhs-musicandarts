@@ -447,6 +447,17 @@ function AccountSheet({ open, onClose }: { open: boolean; onClose: () => void })
               onClick={() => go("/roles")}
             />
           ) : null}
+          {/* System administration only: an invitation code is a cross-program
+              credential, and the server refuses to issue one to anybody else. */}
+          {app.can("system.manage") ? (
+            <Row
+              icon={<KeyRound className="h-4 w-4" />}
+              title="Invitation codes"
+              subtitle="Issue a one-time code for a director or teacher"
+              trailing={<ChevronRight aria-hidden="true" className="h-4 w-4 text-[var(--cue-subtle)]" />}
+              onClick={() => go("/invitations")}
+            />
+          ) : null}
           {app.programs.length > 1 ? (
             <Row
               icon={<ChevronsUpDown className="h-4 w-4" />}

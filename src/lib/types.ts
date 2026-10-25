@@ -312,6 +312,35 @@ export interface TeacherAccessStatus {
   error: string | null;
 }
 
+/**
+ * One row of `list_teacher_invitations()` (035 + 20261027120000), as the
+ * administrator's screen reads it. A code is never part of this: the plaintext
+ * exists only where it was written down when it was issued.
+ */
+export interface InvitationRow {
+  id: string;
+  label: string;
+  /** The address the code is bound to, or null when it is not bound. */
+  intended_email: string | null;
+  expires_at: string | null;
+  redeemed_at: string | null;
+  /** The address on the account that redeemed it. */
+  redeemed_email: string | null;
+  /** That person's name, when their profile can be resolved. */
+  redeemed_by_name: string | null;
+  revoked_at: string | null;
+  created_at: string;
+  /** The program the code also joins, or null for a plain teacher code. */
+  program_id: string | null;
+  program_name: string | null;
+  /** The role granted on that roster. */
+  role_name: string | null;
+  /** `student`, `director`, … for a system role; null for a custom one. */
+  role_key: Role | "system_admin" | null;
+  role_is_system: boolean | null;
+  status: "available" | "redeemed" | "expired" | "revoked";
+}
+
 export interface NotificationRow {
   id: string;
   user_id: string;
@@ -490,6 +519,10 @@ export interface RpcResult {
   join_code?: string;
   /** `join_program()`: true when the caller added a program they were in already. */
   existing?: boolean;
+  /** `redeem_teacher_invitation()`: the code also put them on a roster. */
+  joined?: boolean;
+  /** `redeem_teacher_invitation()`: the role it granted, when it granted one. */
+  role_name?: string;
   /** `create_program()`: how many sections its instruments produced. */
   section_count?: number;
   /** `add_program_section()` / `rename_program_section()`: the written section. */

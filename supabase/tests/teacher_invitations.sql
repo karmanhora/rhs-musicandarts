@@ -337,10 +337,11 @@ begin
   perform public.ti_assert(position('unique_violation' in v_def) > 0,
     'TI-4g the redemption has no backstop for a racing second redemption');
 
-  -- The database's own backstop: at most one *live* redemption per account, so
-  -- even if the function's guard were bypassed, two accounts cannot both hold
-  -- access from one code and one account cannot stack two.
-  v_pred := pg_get_indexdef(to_regclass('public.teacher_invitations_one_per_account'));
+  -- The database's own backstop: at most one *live* redemption per account (and
+  -- per program, since 20261027120000), so even if the function's guard were
+  -- bypassed, two accounts cannot both hold access from one code and one account
+  -- cannot stack two.
+  v_pred := pg_get_indexdef(to_regclass('public.teacher_invitations_one_live_redemption'));
 
   perform public.ti_assert(v_pred is not null,
     'TI-4h the one-live-redemption index is missing');
@@ -348,6 +349,8 @@ begin
     'TI-4i the one-live-redemption index is not unique: ' || coalesce(v_pred, '?'));
   perform public.ti_assert(v_pred ilike '%lower(redeemed_by_auth)%',
     'TI-4j the one-live-redemption index is not scoped to the account: ' || coalesce(v_pred, '?'));
+  perform public.ti_assert(v_pred ilike '%coalesce(ensemble_id%',
+    'TI-4j2 the one-live-redemption index does not count a program separately: ' || coalesce(v_pred, '?'));
   perform public.ti_assert(v_pred ilike '%revoked_at IS NULL%',
     'TI-4k the one-live-redemption index does not exempt revoked rows: ' || coalesce(v_pred, '?'));
 

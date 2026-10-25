@@ -47,6 +47,8 @@ export function TeacherVerification({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
+  /** What this code also granted beyond the credential, when it named a roster. */
+  const [granted, setGranted] = useState<{ program: string; role: string } | null>(null);
 
   const verified = app.verifiedTeacher || done;
 
@@ -81,6 +83,13 @@ export function TeacherVerification({
     await app.refreshTeacherAccess();
     setBusy(false);
     setDone(true);
+    // A staff invitation names the roster it joins; say so rather than leaving
+    // somebody to discover the program by accident in the switcher.
+    setGranted(
+      result.joined && result.program_name
+        ? { program: result.program_name, role: result.role_name ?? "Member" }
+        : null
+    );
     // Never echo the code back — only that it worked.
     setCode("");
     toast.success(result.message ?? "You're verified.");
@@ -92,8 +101,15 @@ export function TeacherVerification({
       <div className="space-y-5">
         <Alert tone="success">
           <span className="font-semibold">Teacher access verified. </span>
-          Your account can start a program of its own and become its director. Your invitation code
-          has been used up — one code works once.
+          Your account can start a program of its own and become its director.
+          {granted ? (
+            <>
+              {" "}
+              You are also on the <strong>{granted.program}</strong> roster as {granted.role} —
+              switch to that program from the menu at the top.
+            </>
+          ) : null}{" "}
+          Your invitation code has been used up — one code works once.
         </Alert>
 
         {!app.mayStartProgram && onStartProgram ? (
@@ -193,8 +209,12 @@ export function TeacherVerification({
               />
               <Row
                 icon={<BadgeCheck className="h-4 w-4" />}
-                title="What it does not do"
-                subtitle="It never adds you to anybody else's program — a director decides that"
+                title={granted ? "What it gave you" : "What it does not do"}
+                subtitle={
+                  granted
+                    ? `${granted.role} on the ${granted.program} roster`
+                    : "It never adds you to anybody else's program unless the administrator issued the code for that program"
+                }
               />
             </List>
           </section>

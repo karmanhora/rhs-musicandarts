@@ -1,8 +1,10 @@
 # Teacher / director verification by invitation code
 
-**Status:** code complete (migration 035 + the frontend that uses it). Migration
-035 is **not** applied to the live project yet — §4 is the apply step, and §5 is
-the one thing an operator must do before handing the initial code out.
+**Status:** code complete (migrations 035 and 20261027120000, plus the frontend
+that uses them). This page does **not** record either migration as applied to the
+live project — §4 is the apply step, and §5 is the one thing an operator must do
+before handing the initial code out. Live state is something to verify, never to
+infer from a document ([DEV.md §7](DEV.md)).
 
 This is the operator guide for the teacher credential: what it is, why the
 self-declared "I'm a teacher" checkbox is no longer one, exactly what an
@@ -21,6 +23,12 @@ to issue — or withdraw — "you may teach here".
 Now the credential is a **redeemed invitation**: a hashed, single-use, optionally
 email-bound code that a signed-in account exchanges on the server for verified
 teacher access.
+
+Since 2026-10-27 a code can also carry a **roster place**: the administrator who
+issues it names one program and one role, and redeeming it grants that membership
+with that role in the same atomic step (§2a). That is the answer to "invite a
+director or a teacher to join" — the invitee never has to be added by hand and
+never picks their own role.
 
 ## 2. How it works
 
@@ -42,19 +50,26 @@ teacher access.
                                         the invitation row is marked redeemed,
                                         with the account and the timestamp
                                            │
-                                           ▼
-   create_program()  ──►  has_teacher_access()  ──►  a program, and a {director}
-                                                     membership on it
+                    ┌──────────────────────┴──────────────────────┐
+                    │                                             │
+        the code names a program + role                 no program: plain code
+                    │                                             │
+                    ▼                                             ▼
+   that membership is created (or an existing      create_program() ──► has_teacher_access()
+   one kept) and the role is added — the               ──► a program, and a {director}
+   account may still start its own program                membership on it
+   afterwards, as any verified teacher may
 ```
 
-Three tables/objects carry the whole feature (migration
-[`035_teacher_invitations.sql`](../supabase/migrations/035_teacher_invitations.sql)):
+Three tables/objects carry the whole feature (migrations
+[`035_teacher_invitations.sql`](../supabase/migrations/035_teacher_invitations.sql)
+and [`20261027120000_invitation_program_roles.sql`](../supabase/migrations/20261027120000_invitation_program_roles.sql)):
 
 | Object | What it holds |
 | --- | --- |
-| `public.teacher_invitations` | one row per issued code: its **SHA-256 digest**, label, optional intended email, optional expiry, and — once used — who redeemed it, with which address, and when |
+| `public.teacher_invitations` | one row per issued code: its **SHA-256 digest**, label, optional intended email, optional expiry, optional program + role, and — once used — who redeemed it, with which address, and when |
 | `public.teacher_invite_attempts` | one row per *failed* attempt. Codes are never recorded here (or anywhere else) |
-| `public.redeem_teacher_invitation(text)` | the only thing that can grant teacher access |
+| `public.redeem_teacher_invitation(text)` | the only thing that can grant teacher access, and the only thing that can turn a code into a roster place |
 
 **There is exactly one authority.** Access is `has_teacher_access()`, which reads
 the redeemed invitation rows; nothing on the account is flipped into a flag that
@@ -66,13 +81,49 @@ back on the holder's next request rather than at their next sign-in.
 migration's seed only as its digest; `configure_teacher_invitation()` hashes what
 it is given and cannot read it back; no function returns a digest to a client.
 
+### 2a. A code that also joins a roster (20261027120000)
+
+`teacher_invitations.ensemble_id` and `.role_id` are optional and always set
+together. With both set, the invitation is a **staff invitation for one program**:
+redeeming it still grants the teacher credential, and in the same transaction it
+
+- creates the profile if the account had none (named from the auth metadata or the
+  address, so a roster row is never blank);
+- creates an active membership if there is none;
+- adds the role — a **system role** (`director`, `secretary`, `section_leader`,
+  `student`) into `memberships.roles`, exactly as `assign_role()` would, or a
+  **custom role** as a live `user_role_assignments` row attributed to the
+  administrator who issued the code;
+- writes a `teacher.invite_join` audit entry beside the `teacher.invite_redeem`
+  one.
+
+What the database refuses, before the code is spent:
+
+| Case | Answer |
+| --- | --- |
+| The role is `system_admin` | `configure_teacher_invitation()` will not issue it, and redemption refuses a row that got in by hand |
+| The role belongs to another program | Refused at issue time and again at redemption |
+| The program or role was deleted or archived | Refused; ask the administrator for a new code |
+| The person was **removed** from that program by a director | Refused, and the code is deliberately **not** spent — the roster is the director's decision |
+| A second, *different* code for the same program on the same account | The per-program unique index refuses the write; the redemption reports it rather than granting twice |
+
+**One guard exception, and only one.** `guard_membership_change` and
+`guard_user_role_assignment` both refuse a person changing their own roles, which
+is exactly what redeeming does. `redeem_teacher_invitation()` therefore sets a
+transaction-local flag (`rhs.invitation_grant`) around those writes. No client can
+set a GUC — PostgREST runs no `SET` for a caller and no RPC exposes `set_config` —
+the membership guard permits an **addition** only (never a removal, never an
+access flip), and the assignment guard still insists on a real, active, custom
+role of that program.
+
 ### What a code does *not* do
 
-It does not put anybody on an existing roster. Director, secretary and section
-leader are per-program roles in `memberships`/`user_role_assignments`, and no
-invitation mints one. A verified teacher starts their *own* program and is its
-director; joining somebody else's program is still that director's decision, and
-still needs their join code.
+It never touches a program the administrator did not name, and it cannot mint
+`system_admin` — that stays a `program_admins` row granted by migration
+(`20261025010444`). Outside the one program a staff invitation names, joining
+somebody else's roster is still that director's decision and still needs their
+join code. A plain code (no program) is unchanged from 035: a verified teacher
+starts their *own* program and is its director.
 
 ## 3. What the browser cannot do
 
@@ -80,6 +131,10 @@ still needs their join code.
 | --- | --- |
 | Type a guessed code | `redeem_teacher_invitation()` compares digests **on the server**, and 5 failed attempts per account (20 per address) in 15 minutes are then refused |
 | Edit a profile / send a role | Roles live on `memberships`, not `profiles`. The `guard_membership_change` trigger refuses the caller's own roles, and `create_program()` takes no program id and no role — it always creates a *new* program |
+| Give yourself a role by redeeming | The code has to exist, be unredeemed, unexpired and (when bound) addressed to you — and the role is one an **administrator** chose. The guard's exception is enabled only inside `redeem_teacher_invitation()`, only for that single write, and only for adding a role (IR-3, IR-5) |
+| Hand yourself `system_admin` with a code | `configure_teacher_invitation()` refuses to issue one, and redemption refuses a row somebody inserted by hand (IR-8) |
+| Re-join a program a director removed you from | The paused membership is detected before the code is spent and the redemption is refused (IR-7) |
+| Issue, list or cancel a code as a program director | All three RPCs answer only to `is_program_admin()`; a director gets a refusal (IR-2) |
 | Read or write the credential tables | Both are `enable row level security` with **no policies**, and `authenticated` has no table privilege at all — a direct read or write is `42501`, not an empty result. Asserted by TI-5 |
 | Flip the sign-up type to "teacher" | It is still only a declaration. `create_program()` asks `has_teacher_access()`, so a declared teacher with no redeemed invitation is refused (TI-9 in `signup_account_type`, CP-11 in `create_program`) |
 | Redeem one code from two accounts at once | The redemption is **one** `UPDATE` whose predicate contains every condition, so the row lock decides the winner; a partial unique index additionally allows at most one live redemption per account. Proved by `scripts/dev/check_teacher_invite_race.sh` |
@@ -90,18 +145,24 @@ still needs their join code.
 
 ## 4. Apply the migration
 
-One file: `supabase/migrations/035_teacher_invitations.sql`. Idempotent,
-**additive** — it creates two tables and replaces two function bodies
-(`redeem_teacher_invitation` is new; `create_program` keeps its 031 signature).
-It touches no existing table, column, row or policy, so applying it cannot
-rewrite attendance, rosters or roles.
+Two files, in this order: `supabase/migrations/035_teacher_invitations.sql`, then
+`supabase/migrations/20261027120000_invitation_program_roles.sql`. Both are
+idempotent and **additive**. 035 creates two tables and replaces two function
+bodies; 20261027120000 adds two nullable columns and the per-program redemption
+index, replaces `configure_teacher_invitation` (new argument list — the old
+four-argument function is dropped, so a four-argument call cannot be ambiguous),
+`redeem_teacher_invitation`, `list_teacher_invitations`, and the two role guards.
+Neither rewrites attendance, rosters or roles.
 
-For an already-migrated project, concatenate only the pending file (the pattern
+Rehearse first, then apply **both** pending files in one transaction (the pattern
 in [`DEV.md`](DEV.md) §5):
 
 ```bash
-{ cat supabase/migrations/035_teacher_invitations.sql; } > /tmp/apply_035.sql
-psql "$NEW_DB_URL" -X -v ON_ERROR_STOP=1 --single-transaction -f /tmp/apply_035.sql
+{
+  cat supabase/migrations/035_teacher_invitations.sql
+  cat supabase/migrations/20261027120000_invitation_program_roles.sql
+} > /tmp/apply_invitations.sql
+psql "$NEW_DB_URL" -X -v ON_ERROR_STOP=1 --single-transaction -f /tmp/apply_invitations.sql
 ```
 
 Or the pipeline, which rehearses everything first:
@@ -111,8 +172,12 @@ bash scripts/migrate/06_apply_migrations.sh --dry-run --with-tests   # rehearse
 CONFIRM_TARGET=NEW bash scripts/migrate/06_apply_migrations.sh       # apply
 ```
 
-Its own verification block fails the apply (`FAIL: …`) if the tables, the seed,
-the `anon` denials or the `create_program()` gate are not actually in place.
+Each file's own verification block fails the apply (`FAIL: …`) if the tables, the
+seed, the `anon` denials, the `create_program()` gate or the invitation columns,
+signature and guards are not actually in place. Apply the migration **before**
+deploying the frontend that calls the six-argument configure RPC and reads
+`/invitations`; the old frontend does not know those exist and keeps working
+against the new schema.
 
 **Order matters for the frontend:** the migration is safe to apply first — with
 it applied and the old frontend deployed, every existing teacher *account* stops
@@ -170,11 +235,19 @@ select public.configure_teacher_invitation(
   '<THE_PLAINTEXT_CODE>',            -- hashed on arrival; never stored or returned
   'Teacher invitation — <TEACHER_NAME_PLACEHOLDER>',
   '<TEACHER_EMAIL_PLACEHOLDER>',
-  now() + interval '14 days'
+  now() + interval '14 days',
+  null,                              -- program, or a program uuid for a staff code
+  null                               -- role in that program (both or neither)
 );
 ```
 
 Neither call can read a code back. Keep your own copy of the plaintext.
+
+From 2026-10-27 the app has a screen for this: **Account sheet → Invitation codes**
+(`/invitations`), visible only to a system administrator. It generates the code,
+takes the optional program and role, shows the plaintext exactly once, lists what
+is ready, and keeps used codes with the name and address of the account that
+redeemed them.
 
 ## 6. Day-to-day operation
 
@@ -185,24 +258,37 @@ in the dashboard's SQL editor (the service role bypasses RLS).
 ```sql
 -- Issue a NEW code for another teacher. Put any secret here that is at least 8
 -- letters/digits; the columns store only the digest.
-insert into public.teacher_invitations (code_hash, label, intended_email, expires_at)
+-- For a staff invitation, fill ensemble_id AND role_id; for a plain teacher code,
+-- leave both null. A role is a uuid from public.roles (a custom role carries its
+-- own ensemble_id; a system role is global).
+insert into public.teacher_invitations
+  (code_hash, label, intended_email, expires_at, ensemble_id, role_id)
 values (
   public.invitation_code_hash('<NEW_CODE_PLACEHOLDER>'),
   '<LABEL_PLACEHOLDER>',
   lower('<TEACHER_EMAIL_PLACEHOLDER>'),
-  now() + interval '14 days'
+  now() + interval '14 days',
+  '<PROGRAM_UUID_OR_NULL>',
+  '<ROLE_UUID_OR_NULL>'
 )
 on conflict (code_hash) do nothing;
 
--- What is issued, and where each one got to. Never shows a code or a digest.
-select id, label, intended_email, expires_at,
-       redeemed_at, redeemed_email, revoked_at,
-       case when revoked_at is not null      then 'revoked'
-            when redeemed_at is not null     then 'redeemed'
-            when expires_at <= now()         then 'expired'
+-- What is issued, where each one got to, and what it grants. Never shows a code
+-- or a digest.
+select i.id, i.label, i.intended_email, i.expires_at,
+       e.name as program, r.name as role,
+       i.redeemed_at, i.redeemed_email,
+       coalesce(nullif(p.display_name, ''), p.full_name) as redeemed_by,
+       i.revoked_at,
+       case when i.revoked_at is not null   then 'revoked'
+            when i.redeemed_at is not null  then 'redeemed'
+            when i.expires_at <= now()      then 'expired'
             else 'available' end as status
-  from public.teacher_invitations
- order by created_at;
+  from public.teacher_invitations i
+  left join public.ensembles e on e.id = i.ensemble_id
+  left join public.roles r    on r.id = i.role_id
+  left join public.profiles p on lower(p.auth_user_id) = lower(i.redeemed_by_auth)
+ order by i.created_at;
 
 -- Withdraw one. On a redeemed invitation this also removes that account's
 -- teacher access, on its next request.
@@ -215,8 +301,11 @@ select i.redeemed_by_auth, i.redeemed_email, i.redeemed_at, i.label
  order by i.redeemed_at desc;
 ```
 
-From a client, the same three are `configure_teacher_invitation(...)`,
-`list_teacher_invitations()` and `revoke_teacher_invitation(<uuid>)`.
+From a client, the same three are `configure_teacher_invitation(code, label,
+intended_email, expires_at, ensemble_id, role_id)`,
+`list_teacher_invitations()` and `revoke_teacher_invitation(<uuid>)`; the app
+wraps them in `src/lib/rpc.ts` (`configureTeacherInvitation`,
+`listTeacherInvitations`, `revokeTeacherInvitation`).
 
 ## 7. Environment variables and secrets
 
@@ -242,6 +331,15 @@ bash scripts/dev/verify_migrations_locally.sh        # every migration + every S
 bash scripts/dev/check_teacher_invite_race.sh        # after the above: two sessions, one code
 ```
 
+`supabase/tests/invitation_program_roles.sql` (IR-1…IR-11) covers the roster half:
+issuing a program+role code and listing it; a director refused issue/list/revoke;
+redemption creating the profile, the membership and the role and recording who
+used the code; single use; a custom role granted beside an existing student
+membership; a plain code still joining nobody; a removed member refused **without**
+spending the code; `system_admin` neither issuable nor redeemable; an expired code;
+and one live invitation per program, so a second program follows the first while a
+spare registration code is a no-op.
+
 `supabase/tests/teacher_invitations.sql` (TI-1…TI-10) covers all ten cases in the
 change brief: a valid invitation grants the role; an invalid one grants nothing;
 a redeemed code cannot be reused; a student cannot self-promote through their
@@ -258,13 +356,19 @@ the winner only. (Verified to be a *real* race: with a deliberately naive
 read-then-write probe both sessions won, and with the shipped atomic `UPDATE` only
 one does.)
 
+The screen has its own browser test, `e2e/invitations.spec.ts` (chromium): it
+serves a system administrator, asserts a ready code and a used code with its
+redeemer's name and address, issues a new code and proves the plaintext is shown
+once and is gone after the sheet closes, and cancels a code out of the ready list.
+Run it with `npx playwright test e2e/invitations.spec.ts --project=chromium`.
+
 ## 9. Limits, and what is not claimed
 
 - **No step here has been run against the live Supabase project.** Everything
   above is verified against a throwaway local PostgreSQL holding the same schema
-  and data the migration pipeline restores. Applying 035 is still an operator
-  action (§4), and no real sign-in, Google round-trip or redemption has happened
-  in production.
+  and data the migration pipeline restores. Applying 035 and 20261027120000 is
+  still an operator action (§4); verify live state rather than inferring it from
+  this page.
 - **A code is only as secret as the channel you send it through.** Email is not a
   secure channel; a code that has been forwarded is a code that can be redeemed.
   Where that matters, bind it to an address (§5) so only that account can use it,
@@ -280,4 +384,16 @@ one does.)
 - **Revocation is immediate but not retroactive.** It removes the teacher
   credential; it does not remove the person from a program they already direct
   (that is the roster's `director` role, and `remove_member()`/`revoke_role()`
-  are the tools for it).
+  are the tools for it). The same applies to a redeemed **staff** invitation:
+  cancelling the code withdraws teacher access but leaves the membership and role
+  it created, because the roster is the program's business, not the code's.
+- **A staff invitation is an administrator's grant, not a second roster editor.**
+  It cannot remove, pause or move anybody, it prints no changes over an existing
+  role, and it never revives a membership a director paused (IR-7). Everything
+  after the redemption is ordinary roster work: Roles & permissions for a role,
+  the roster for a section or a removal.
+- **One live redemption per account per program.** The unique index counts a
+  program separately from a plain registration code, so a teacher can be invited
+  to a second program later without a second account (IR-10) — but the same code
+  cannot be redeemed twice, and two live codes for one program on one account are
+  refused by the index.

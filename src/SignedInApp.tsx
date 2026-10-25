@@ -57,6 +57,11 @@ const TeacherVerifyScreen = lazy(() =>
     default: module.TeacherVerifyScreen,
   }))
 );
+const InvitationsScreen = lazy(() =>
+  import("./screens/InvitationsScreen").then((module) => ({
+    default: module.InvitationsScreen,
+  }))
+);
 const SetupScreen = lazy(() =>
   import("./screens/SetupScreen").then((module) => ({ default: module.SetupScreen }))
 );
@@ -268,6 +273,17 @@ function ProgramRoutes() {
           element={
             <PermissionGate permission="roles.view">
               <RolesScreen />
+            </PermissionGate>
+          }
+        />
+        {/* Issuing staff invitations is system administration, not program
+            administration: `configure_teacher_invitation()` refuses anybody
+            without a `program_admins` row, so this gate is the same fact. */}
+        <Route
+          path="/invitations"
+          element={
+            <PermissionGate permission="system.manage">
+              <InvitationsScreen />
             </PermissionGate>
           }
         />

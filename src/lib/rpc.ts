@@ -8,6 +8,7 @@ import type {
   AttendanceStatus,
   BackgroundId,
   DashboardModuleId,
+  InvitationRow,
   MakeupEmailContext,
   MakeupEmailSendResponse,
   MyAbsenceRequestRow,
@@ -307,10 +308,62 @@ export async function getTeacherAccessStatus(): Promise<TeacherAccessStatus> {
  * Redeem a teacher invitation code. The code is normalized, hashed, checked for
  * expiry and email binding and consumed atomically on the server (migration
  * 035) — this call is a request, never a decision, and the plaintext is never
- * stored or logged anywhere.
+ * stored or logged anywhere. A code an administrator issued for one program
+ * also puts the caller on that roster with its role (20261027120000); the
+ * answer says which, so the screen can show it.
  */
 export const redeemTeacherInvitation = (code: string) =>
   callRpc("redeem_teacher_invitation", { p_code: code.trim() });
+
+// --- Staff invitations (system administrator; 035 + 20261027120000) ---------
+
+/** `list_teacher_invitations()` answers `{ ok, invitations }`, never a code. */
+export interface InvitationListResult extends RpcResult {
+  invitations?: InvitationRow[];
+}
+
+/** Every invitation with its program, role, state and — once used — its redeemer. */
+export async function listTeacherInvitations(): Promise<{
+  result: InvitationListResult | null;
+  error: PostgrestError | null;
+}> {
+  const { data, error } = await supabase.rpc("list_teacher_invitations");
+  return { result: (data ?? null) as InvitationListResult | null, error };
+}
+
+/**
+ * Issue a code, or re-bind/re-label/reschedule one that has not been used.
+ *
+ * The code travels in plaintext here and is hashed by the server: it is never
+ * stored, never returned and cannot be shown again, so the screen that calls
+ * this has to show it to the administrator once. Naming a program *and* a role
+ * makes it a staff invitation; leaving both out makes it a plain teacher code.
+ */
+export const configureTeacherInvitation = (input: {
+  code: string;
+  label?: string;
+  intendedEmail?: string | null;
+  expiresAt?: string | null;
+  programId?: string | null;
+  roleId?: string | null;
+}) =>
+  callRpc("configure_teacher_invitation", {
+    p_code: input.code.trim(),
+    p_label: input.label?.trim() ?? "",
+    p_intended_email: input.intendedEmail?.trim() || null,
+    p_expires_at: input.expiresAt ?? null,
+    p_ensemble_id: input.programId ?? null,
+    p_role_id: input.roleId ?? null,
+  });
+
+/**
+ * Cancel a code, and — when it had already been used — the teacher access it
+ * granted, on the holder's very next request. A redeemed program invitation
+ * leaves the roster place it created alone: that is the roster's business, and
+ * `revoke_role()` is the tool for it.
+ */
+export const revokeTeacherInvitation = (invitationId: string) =>
+  callRpc("revoke_teacher_invitation", { p_invitation_id: invitationId });
 
 // --- My own numbers (any member) -------------------------------------------
 
