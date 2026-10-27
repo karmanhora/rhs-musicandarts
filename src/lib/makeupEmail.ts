@@ -7,6 +7,7 @@
  */
 
 export const MAKEUP_PLACEHOLDERS = [
+  { token: "{student_first_name}", label: "Student's first name" },
   { token: "{student_name}", label: "Student name" },
   { token: "{event_name}", label: "Event name" },
   { token: "{event_date}", label: "Event date" },
@@ -58,24 +59,33 @@ export function makeupTimeLabel(
 }
 
 export function defaultMakeupSubject(eventName: string): string {
-  return `Make-Up Instructions for ${eventName}`;
+  return `Make-Up Opportunity for ${eventName}`;
 }
 
-export const DEFAULT_MAKEUP_BODY = `Hello {student_name},
+/**
+ * The starting point a teacher edits — never a message they cannot change.
+ * `{makeup_instructions}` is a separate field, so the part that differs per
+ * event is written once instead of rewritten into every copy.
+ */
+export const DEFAULT_MAKEUP_BODY = `Hi {student_first_name},
 
-Our attendance records indicate that you were marked absent for {event_name} on {event_date}.
+We noticed that you were absent from {event_name} on {event_date}.
 
-Please complete the following make-up activity or follow these instructions:
-
-{makeup_instructions}
-
-If you believe your attendance was recorded incorrectly, please contact your teacher.
+Please let us know if you have any questions. To make up for the missed event, {makeup_instructions}.
 
 Thank you,
-{teacher_name}
-{program_name}`;
+{teacher_name}`;
+
+/**
+ * The first word of what the app calls somebody — the app builds display names
+ * as "First Last", so this is the first name a teacher would write.
+ */
+export function firstName(name: string): string {
+  return name.trim().split(/\s+/)[0] ?? "";
+}
 
 export interface MakeupTemplateValues {
+  student_first_name: string;
   student_name: string;
   event_name: string;
   event_date: string;
@@ -117,6 +127,7 @@ export function makeupValuesFor(
   instructions: string
 ): MakeupTemplateValues {
   return {
+    student_first_name: firstName(studentName),
     student_name: studentName,
     event_name: event.name,
     event_date: makeupDateLabel(event.date),

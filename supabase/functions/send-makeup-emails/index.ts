@@ -7,9 +7,10 @@ import { createClient } from "npm:@supabase/supabase-js@2";
  *   * `verify_jwt = true` (the platform checks the JWT; the function checks the
  *     account again below), and the caller must be staff of the event's program
  *     with `attendance.mark_present`.
- *   * The recipient set is decided by migration 036 from attendance records —
- *     confirmed `absent` only — never from the ids in the request. The request
- *     may narrow that set, never widen it.
+ *   * The recipient set is decided by the database — the event's expected roster
+ *     minus its present/late/excused records, which is what "absent" stores to —
+ *     never from the ids in the request. The request may narrow that set, never
+ *     widen it, and a correction on the roll drops that student before a send.
  *   * The event's latest end time is re-read here and again by
  *     `begin_makeup_email_campaign()`; a request that arrives before the event
  *     ends is refused.
@@ -138,6 +139,11 @@ function fillTemplate(
   );
 }
 
+/** The app builds names as "First Last"; a greeting wants the first word. */
+function firstName(name: string): string {
+  return (name ?? "").trim().split(/\s+/)[0] ?? "";
+}
+
 interface LatestEvent {
   name: string;
   date: string;
@@ -152,6 +158,7 @@ function valueFor(
   event: LatestEvent
 ) {
   return {
+    student_first_name: firstName(recipient.name),
     student_name: recipient.name,
     event_name: event.name || "Event",
     event_date: event.date ? dayFormat.format(new Date(event.date)) : "",

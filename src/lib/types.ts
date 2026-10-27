@@ -189,28 +189,34 @@ export interface EventRow {
 }
 
 /**
- * One confirmed-absent recipient of a make-up email (migration 036). The
- * composer receives names and statuses only — the server holds the addresses
- * and resolves them when it sends.
+ * One absent recipient of a make-up email. "Absent" means expected at the event
+ * with no present/late/excused record (an absent mark deletes the row), which is
+ * why this group cannot be read off a stored status. The address travels with it
+ * so the teacher can see who each message goes to before sending.
  */
 export interface MakeupEmailRecipient {
   user_id: string;
   name: string;
+  email: string;
   section: string;
   status: "absent";
 }
 
-/** An active student with no attendance row — shown for review, never mailed. */
-export interface MakeupEmailUnmarked {
+/** Why an absent student cannot be emailed — shown, never silently dropped. */
+export type MakeupEmailUnreachableReason = "no_sign_in" | "no_address" | "unconfirmed";
+
+/** Expected at the event and absent, but no address can reach them. Never mailed. */
+export interface MakeupEmailUnreachable {
   user_id: string;
   name: string;
   section: string;
+  reason: MakeupEmailUnreachableReason;
 }
 
 /**
- * `makeup_email_context()` (036): whether the event may be mailed about now,
- * why not when it may not, and the two recipient groups. Staff-only; no
- * addresses are returned.
+ * `makeup_email_context()`: whether the event may be mailed about now, why not
+ * when it may not, how many people the event expected, and the two absentee
+ * groups — those an address can reach, and those it cannot. Staff-only.
  */
 export interface MakeupEmailContext {
   ok: boolean;
@@ -228,8 +234,12 @@ export interface MakeupEmailContext {
   };
   program_name?: string;
   teacher_name?: string;
+  /** Active, non-staff members of the event's program. */
+  roster_size?: number;
+  /** How many of them are absent, reachable or not. */
+  absent_count?: number;
   recipients?: MakeupEmailRecipient[];
-  unmarked?: MakeupEmailUnmarked[];
+  unreachable?: MakeupEmailUnreachable[];
 }
 
 /** One Resend result returned by the `send-makeup-emails` function. */

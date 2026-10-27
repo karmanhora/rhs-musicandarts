@@ -984,7 +984,19 @@ export function CalendarScreen() {
             </div>
 
             {form.all_day ? null : (
-              <Field label="Ends" hint="Leave empty if you don't know — it's optional.">
+              <Field
+                label="Ends"
+                hint={
+                  // The end time is what closes check-in: with one saved, the
+                  // QR code stops working the moment the event does
+                  // (`record_checkin_for_session`). Without one, check-in stays
+                  // open for 24 hours after the start, which is the state a
+                  // teacher reporting "the code still works" is usually in.
+                  form.checkin_mode === "qr" || form.checkin_mode === "both"
+                    ? "Check-in stops when this time passes. Left empty, the code keeps working for 24 hours after the start."
+                    : "Leave empty if you don't know — it's optional."
+                }
+              >
                 <Input
                   type="time"
                   value={form.endTime}

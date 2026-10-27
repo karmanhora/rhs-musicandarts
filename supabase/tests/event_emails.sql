@@ -142,13 +142,17 @@ values
   ('03600000-0000-4000-8000-000000000014', 'Mail Archived Make-Up','Concert', now() - interval '3 hours', now() - interval '1 hour', '03600000-0000-4000-8000-000000000001', 'concert',   true,  '2026-10-01 00:00:00+00'),
   ('03600000-0000-4000-8000-000000000015', 'Mail Archived Program','Concert', now() - interval '3 hours', now() - interval '1 hour', '03600000-0000-4000-8000-000000000003', 'concert',   false, '2026-10-01 00:00:00+00');
 
+-- The make-up event's roll. Only present / late / excused records exist in this
+-- schema: marking somebody absent *deletes* the row (016), so an absentee is a
+-- student with no resolving record. The `status = 'absent'` rows below are the
+-- legacy shape a pre-016 database could hold, and must behave the same as no
+-- row at all; 'late' is not an absence for make-up and 'excused' is resolved.
 insert into public.attendance_records (event_id, student_id, status, attended) values
   ('03600000-0000-4000-8000-000000000011', '03600000-0000-4000-8000-000000000202', 'absent',  false),
   ('03600000-0000-4000-8000-000000000011', '03600000-0000-4000-8000-000000000203', 'late',    true),
   ('03600000-0000-4000-8000-000000000011', '03600000-0000-4000-8000-000000000204', 'absent',  false),
   ('03600000-0000-4000-8000-000000000011', '03600000-0000-4000-8000-000000000205', 'present', true),
   ('03600000-0000-4000-8000-000000000011', '03600000-0000-4000-8000-000000000206', 'absent',  false),
-  ('03600000-0000-4000-8000-000000000011', '03600000-0000-4000-8000-000000000207', 'absent',  false),
   ('03600000-0000-4000-8000-000000000011', '03600000-0000-4000-8000-000000000208', 'absent',  false),
   ('03600000-0000-4000-8000-000000000011', '03600000-0000-4000-8000-000000000209', 'absent',  false),
   ('03600000-0000-4000-8000-000000000011', '03600000-0000-4000-8000-00000000020a', 'absent',  false),
@@ -478,22 +482,62 @@ begin
     raise exception 'FAIL: EE-6 an ended event was not sendable: %', v ->> 'reason';
   end if;
 
+  -- Expected at the event and absent (no present/late/excused record): the
+  -- student, the opted-out student with no record, and the student with no
+  -- record at all. The section leader has a 'late' record and the excused and
+  -- present students have resolving marks.
+  select string_agg(r ->> 'user_id', ',' order by r ->> 'user_id')
+    into v_ids
+    from jsonb_array_elements(v -> 'recipients') r;
+  if v_ids is distinct from '03600000-0000-4000-8000-000000000202,03600000-0000-4000-8000-000000000207,03600000-0000-4000-8000-00000000020d' then
+    raise exception 'FAIL: EE-6 wrong make-up recipients: %', v_ids;
+  end if;
+
+  -- Staff need the address each message goes to (owner request, 2026-10-28).
+  if v::text not like '%@%' then
+    raise exception 'FAIL: EE-6 the staff context carried no recipient address: %', v;
+  end if;
+
+  -- Nobody expected at this event is silently dropped: those who are absent but
+  -- unreachable are reported with the reason instead.
+  select string_agg((r ->> 'user_id') || '=' || (r ->> 'reason'), ',' order by r ->> 'user_id')
+    into v_ids
+    from jsonb_array_elements(v -> 'unreachable') r;
+  if v_ids is distinct from
+     '03600000-0000-4000-8000-000000000206=unconfirmed,03600000-0000-4000-8000-00000000020a=no_address,03600000-0000-4000-8000-00000000020b=no_sign_in' then
+    raise exception 'FAIL: EE-6 the unreachable group is wrong: %', v_ids;
+  end if;
+
+  -- The numbers the composer uses to tell "everyone had a record" from a
+  -- failed read: nine students are expected at this event (the deactivated
+  -- profile, the inactive membership, both staff accounts and the other
+  -- program's members are not), six of them are absent.
+  if (v ->> 'roster_size')::int <> 9 or (v ->> 'absent_count')::int <> 6 then
+    raise exception 'FAIL: EE-6 roster/absent counts are %/%, expected 9/6',
+      v ->> 'roster_size', v ->> 'absent_count';
+  end if;
+
+  -- A teacher correction is respected: marking a student present takes them off
+  -- the list the teacher is about to email.
+  perform public.override_attendance(
+    '03600000-0000-4000-8000-000000000011',
+    '03600000-0000-4000-8000-00000000020d', 'present', '', '');
+  v := public.makeup_email_context('03600000-0000-4000-8000-000000000011');
   select string_agg(r ->> 'user_id', ',' order by r ->> 'user_id')
     into v_ids
     from jsonb_array_elements(v -> 'recipients') r;
   if v_ids is distinct from '03600000-0000-4000-8000-000000000202,03600000-0000-4000-8000-000000000207' then
-    raise exception 'FAIL: EE-6 wrong make-up recipients: %', v_ids;
+    raise exception 'FAIL: EE-6 a corrected mark did not remove the recipient: %', v_ids;
   end if;
-
-  if v::text like '%@%' then
-    raise exception 'FAIL: EE-6 the context leaked an email address: %', v;
-  end if;
-
+  perform public.override_attendance(
+    '03600000-0000-4000-8000-000000000011',
+    '03600000-0000-4000-8000-00000000020d', 'absent', '', '');
+  v := public.makeup_email_context('03600000-0000-4000-8000-000000000011');
   select string_agg(r ->> 'user_id', ',' order by r ->> 'user_id')
     into v_ids
-    from jsonb_array_elements(v -> 'unmarked') r;
-  if v_ids is distinct from '03600000-0000-4000-8000-00000000020d' then
-    raise exception 'FAIL: EE-6 the unmarked group is wrong: %', v_ids;
+    from jsonb_array_elements(v -> 'recipients') r;
+  if v_ids is distinct from '03600000-0000-4000-8000-000000000202,03600000-0000-4000-8000-000000000207,03600000-0000-4000-8000-00000000020d' then
+    raise exception 'FAIL: EE-6 clearing a mark did not restore the recipient: %', v_ids;
   end if;
 
   -- Not ended.
@@ -604,7 +648,10 @@ begin
     raise exception 'FAIL: EE-7 another program''s director created a campaign';
   end if;
 
-  -- A valid campaign: the two confirmed absent students.
+  -- A valid campaign: every expected student with no present/late/excused
+  -- record, of those an address can reach. The legacy 'absent' row and the
+  -- missing row are both absentees; the unconfirmed, address-less and
+  -- account-less students are not reachable.
   v := public.begin_makeup_email_campaign(
     '03600000-0000-4000-8000-000000000011',
     '03600000-0000-4000-8000-000000000201', v_op,
@@ -616,13 +663,13 @@ begin
   end if;
   v_campaign := (v ->> 'campaign_id')::uuid;
   v_count := jsonb_array_length(v -> 'recipients');
-  if v_count <> 2 then
-    raise exception 'FAIL: EE-7 campaign has % recipients, expected 2', v_count;
+  if v_count <> 3 then
+    raise exception 'FAIL: EE-7 campaign has % recipients, expected 3', v_count;
   end if;
   select string_agg(r ->> 'user_id', ',' order by r ->> 'user_id')
     into v_ids
     from jsonb_array_elements(v -> 'recipients') r;
-  if v_ids is distinct from '03600000-0000-4000-8000-000000000202,03600000-0000-4000-8000-000000000207' then
+  if v_ids is distinct from '03600000-0000-4000-8000-000000000202,03600000-0000-4000-8000-000000000207,03600000-0000-4000-8000-00000000020d' then
     raise exception 'FAIL: EE-7 wrong campaign recipients: %', v_ids;
   end if;
   -- This is the server-to-server answer; it may carry addresses, but never to
@@ -656,8 +703,10 @@ begin
     'Make-Up Instructions for Mail Make-Up Event',
     'Come to Thursday''s make-up rehearsal.',
     'Hello {student_name}');
-  if jsonb_array_length(v -> 'recipients') <> 1
-     or (v -> 'recipients' -> 0 ->> 'user_id') <> '03600000-0000-4000-8000-000000000207' then
+  select string_agg(r ->> 'user_id', ',' order by r ->> 'user_id')
+    into v_ids
+    from jsonb_array_elements(v -> 'recipients') r;
+  if v_ids is distinct from '03600000-0000-4000-8000-000000000207,03600000-0000-4000-8000-00000000020d' then
     raise exception 'FAIL: EE-7 a retry offered an already-accepted recipient: %', v;
   end if;
 
@@ -681,8 +730,8 @@ begin
   if (v ->> 'campaign_id')::uuid = v_campaign then
     raise exception 'FAIL: EE-7 a follow-up reused the earlier campaign';
   end if;
-  if jsonb_array_length(v -> 'recipients') <> 2 then
-    raise exception 'FAIL: EE-7 a follow-up did not include both absentees: %', v;
+  if jsonb_array_length(v -> 'recipients') <> 3 then
+    raise exception 'FAIL: EE-7 a follow-up did not include every absentee: %', v;
   end if;
 
   -- Narrowing works; widening to a late student does not.
@@ -814,13 +863,25 @@ begin
     raise exception 'FAIL: EE-9 a director read the reminder log from a client session';
   end if;
 
-  -- The one client-callable function works for staff and returns no addresses.
+  -- The one client-callable function works for staff (who need the address each
+  -- message goes to) and returns nothing at all to anybody else.
+  set local role authenticated;
+  v_members := public.makeup_email_context('03600000-0000-4000-8000-000000000011')::text;
+  reset role;
+  if v_members not like '%@%' then
+    raise exception 'FAIL: EE-9 the staff context carried no recipient address';
+  end if;
+
+  perform set_config('request.jwt.claims',
+    '{"sub":"03600000-0000-4000-8000-000000000102","role":"authenticated"}', true);
   set local role authenticated;
   v_members := public.makeup_email_context('03600000-0000-4000-8000-000000000011')::text;
   reset role;
   if v_members like '%@%' then
-    raise exception 'FAIL: EE-9 the client-callable context carried an address';
+    raise exception 'FAIL: EE-9 a student was handed the recipient addresses';
   end if;
+  perform set_config('request.jwt.claims',
+    '{"sub":"03600000-0000-4000-8000-000000000101","role":"authenticated"}', true);
 
   raise notice 'event emails OK: 48-hour window, schedule-version idempotency, staff-only make-up recipients, client logs closed';
 end

@@ -28,8 +28,14 @@ import { CheckInConfirmation } from "../components/CheckInSuccess";
 import { fetchEvents, fetchSessionForEvent } from "../lib/queries";
 import { recordAttendance, recordAttendanceByCode } from "../lib/rpc";
 import type { RpcResponse } from "../lib/rpc";
-import { loadRecordedCheckins, submitCheckin } from "../lib/checkin";
+import {
+  checkinWindow,
+  isCheckinClosedMessage,
+  loadRecordedCheckins,
+  submitCheckin,
+} from "../lib/checkin";
 import type { CheckinKind } from "../lib/checkin";
+import { useNow } from "../hooks/useNow";
 import type { EventRow, RpcResult } from "../lib/types";
 import { usePrograms } from "../hooks/usePrograms";
 import { CHECKIN_CODE_LENGTH, CHECKIN_MODE_LABEL, eventTypeLabel } from "../lib/constants";
@@ -147,6 +153,10 @@ function TokenResult({ token }: { token: string }) {
 
   if (outcome?.result.ok) return <CheckInOutcome outcome={outcome.result} kind={outcome.kind} />;
 
+  // The server refused because the event's window has closed: that is an answer,
+  // not an error. Offering the form again would only produce the same refusal.
+  if (isCheckinClosedMessage(failure ?? outcome?.result.message)) return <CheckInClosed />;
+
   return (
     <div className="space-y-4">
       <Alert tone="error" className="checkin-error">
@@ -156,6 +166,44 @@ function TokenResult({ token }: { token: string }) {
         If the code on screen has changed, ask your director or section leader for the current one.
       </p>
       <CheckInForm />
+    </div>
+  );
+}
+
+/**
+ * What a student is shown when the event's check-in window has closed.
+ *
+ * The rule is the database's, not this screen's: `record_checkin_for_session`
+ * refuses a scan past the event's saved end time, so a refreshed page, an old QR
+ * code or a check-in screen left open all end here — there is no client path
+ * that can accept one. `onRetry` exists only so a student who scanned the wrong
+ * project's code is not stuck.
+ */
+function CheckInClosed({ onRetry }: { onRetry?: () => void }) {
+  const navigate = useNavigate();
+  return (
+    <div className="cue-stagger space-y-3">
+      <Card className="space-y-2">
+        <div className="flex items-center gap-2">
+          <Timer aria-hidden="true" className="h-4 w-4 text-[var(--cue-muted)]" />
+          <p className="type-heading">Check-in has closed</p>
+        </div>
+        <p className="text-sm">
+          This event stopped taking check-ins at its scheduled end time, so nothing you scan or
+          type now can record you.
+        </p>
+        <p className="type-meta">
+          If you were there, ask your director or section leader to mark the roll for you.
+        </p>
+      </Card>
+      {onRetry ? (
+        <Button block variant="secondary" onClick={onRetry}>
+          Try another code
+        </Button>
+      ) : null}
+      <Button block variant="secondary" onClick={() => navigate("/")}>
+        Done
+      </Button>
     </div>
   );
 }
@@ -244,6 +292,13 @@ function CheckInForm() {
   const onScannerError = useCallback((message: string) => setFailure(message), []);
 
   if (outcome?.result.ok) return <CheckInOutcome outcome={outcome.result} kind={outcome.kind} />;
+
+  // A closed event stops the scan and the typed code here as well as on the
+  // server. "Try another code" clears it for the rare student who is in two
+  // programs and scanned the one that has ended.
+  if (isCheckinClosedMessage(failure)) {
+    return <CheckInClosed onRetry={() => setFailure(null)} />;
+  }
 
   return (
     <div className="cue-stagger space-y-4">
@@ -340,6 +395,7 @@ function TodayHint({ programId }: { programId: string | null }) {
   const [error, setError] = useState<string | null>(null);
   const [retry, setRetry] = useState(0);
   const navigate = useNavigate();
+  const now = useNow(30_000);
 
   useEffect(() => {
     if (!programId) {
@@ -353,9 +409,19 @@ function TodayHint({ programId }: { programId: string | null }) {
           from: new Date(new Date().setHours(0, 0, 0, 0)).toISOString(),
           to: new Date(new Date().setHours(23, 59, 59, 999)).toISOString(),
         });
-        const session = list[0] ? await fetchSessionForEvent(list[0].id) : null;
+        // Today's event that matters: one still taking check-ins, else the next
+        // one to start, else the last of the day — never an earlier one that is
+        // already over, which is what used to make this card point at the wrong
+        // rehearsal all afternoon.
+        const ms = Date.now();
+        const chosen =
+          list.find((e) => checkinWindow(e, ms).open && new Date(e.date).getTime() > ms) ??
+          list.find((e) => checkinWindow(e, ms).open) ??
+          list[list.length - 1] ??
+          null;
+        const session = chosen ? await fetchSessionForEvent(chosen.id) : null;
         if (cancelled) return;
-        setEvent(list[0] ?? null);
+        setEvent(chosen);
         setHasSession(Boolean(session && new Date(session.expires_at) > new Date()));
         setError(null);
       } catch (e) {
@@ -408,7 +474,12 @@ function TodayHint({ programId }: { programId: string | null }) {
         {eventTypeLabel(event.event_type)}
       </p>
       <p className="type-meta mt-1.5">
-        {hasSession ? (
+        {!checkinWindow(event, now).open ? (
+          <span className="font-medium">
+            Check-in closed
+            {event.end_date ? ` at ${fmtTime(event.end_date)}` : " 24 hours after it began"}.
+          </span>
+        ) : hasSession ? (
           <span className="inline-flex items-center gap-1.5 font-semibold text-[var(--cue-green)]">
             <Timer aria-hidden="true" className="h-4 w-4" /> A code is live right now
           </span>

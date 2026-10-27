@@ -30,11 +30,22 @@ import type {
   MakeupEmailContext,
   MakeupEmailRecipient,
   MakeupEmailSendResult,
+  MakeupEmailUnreachableReason,
 } from "../lib/types";
 
 /** Send in small chunks so the composer can show real progress and keep each
  * request well inside the function's time budget. */
 const CHUNK_SIZE = 10;
+
+/**
+ * Why an absent student cannot be emailed, in the teacher's words. These are the
+ * reasons the database reports next to each name it could not include.
+ */
+const UNREACHABLE_REASON: Record<MakeupEmailUnreachableReason, string> = {
+  no_sign_in: "no sign-in account is linked to their roster row",
+  no_address: "their account has no email address",
+  unconfirmed: "their email address has never been confirmed",
+};
 
 function newOperationId(): string {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
@@ -57,7 +68,20 @@ function newOperationId(): string {
  * sent is re-checked by the Edge Function and migration 036 against the latest
  * saved end time, so a wrong clock here cannot authorise a premature email.
  */
-export function MakeupEmailPanel({ event }: { event: EventRow }) {
+/**
+ * `refreshKey` changes whenever the roll behind this panel is re-read — a scan,
+ * a manual mark, a correction. While the sheet is open it makes the composer
+ * re-read its recipient list, so a student the roll has just marked present is
+ * never emailed a make-up notice (and attendance is still never changed by
+ * sending).
+ */
+export function MakeupEmailPanel({
+  event,
+  refreshKey = 0,
+}: {
+  event: EventRow;
+  refreshKey?: number;
+}) {
   const [open, setOpen] = useState(false);
   const { ended, valid } = useEventEnded(event.end_date, event.date);
 
@@ -77,7 +101,7 @@ export function MakeupEmailPanel({ event }: { event: EventRow }) {
         <div className="min-w-0">
           <SectionTitle className="mb-1">After the event</SectionTitle>
           <p className="text-sm font-semibold">
-            Email students who were marked absent and give them make-up instructions.
+            Email the students who missed this event and give them make-up instructions.
           </p>
           <p className="type-meta mt-1">
             Individual emails — no student sees another&rsquo;s address. Attendance is never changed
@@ -103,7 +127,12 @@ export function MakeupEmailPanel({ event }: { event: EventRow }) {
         </Button>
       </div>
 
-      <MakeupEmailComposer event={event} open={open} onClose={() => setOpen(false)} />
+      <MakeupEmailComposer
+        event={event}
+        open={open}
+        refreshKey={refreshKey}
+        onClose={() => setOpen(false)}
+      />
     </section>
   );
 }
@@ -111,10 +140,12 @@ export function MakeupEmailPanel({ event }: { event: EventRow }) {
 function MakeupEmailComposer({
   event,
   open,
+  refreshKey,
   onClose,
 }: {
   event: EventRow;
   open: boolean;
+  refreshKey: number;
   onClose: () => void;
 }) {
   const { toast } = useToast();
@@ -122,6 +153,8 @@ function MakeupEmailComposer({
   const [context, setContext] = useState<MakeupEmailContext | null>(null);
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshError, setRefreshError] = useState<string | null>(null);
 
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [subject, setSubject] = useState("");
@@ -131,6 +164,11 @@ function MakeupEmailComposer({
   const operationId = useRef<string>(newOperationId());
   /** Which event the current draft belongs to, so closing the sheet keeps it. */
   const loadedFor = useRef<string | null>(null);
+  /** Which (event, roll version) this sheet has already read. */
+  const readKey = useRef<string | null>(null);
+  /** Recipients the teacher has already been shown, so a refresh only adds
+   * students who appeared since — never re-ticks one they unticked. */
+  const knownRecipients = useRef<Set<string>>(new Set());
   const [confirming, setConfirming] = useState(false);
   const [sending, setSending] = useState(false);
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
@@ -143,8 +181,10 @@ function MakeupEmailComposer({
     // sheet is closed and reopened.
     operationId.current = newOperationId();
     loadedFor.current = event.id;
+    readKey.current = `${event.id}:${refreshKey}`;
     setLoading(true);
     setLoadError(null);
+    setRefreshError(null);
     setFatal(null);
     setResults({});
     setProgress(null);
@@ -153,6 +193,7 @@ function MakeupEmailComposer({
     setSubject(defaultMakeupSubject(event.name));
     setInstructions("");
     setBody(DEFAULT_MAKEUP_BODY);
+    knownRecipients.current = new Set();
 
     const { context: loaded, error } = await getMakeupEmailContext(event.id);
     setLoading(false);
@@ -167,8 +208,43 @@ function MakeupEmailComposer({
     setContext(loaded);
     loadedFor.current = event.id;
     setSubject(defaultMakeupSubject(loaded.event?.name ?? event.name));
-    setSelected(new Set((loaded.recipients ?? []).map((row) => row.user_id)));
-  }, [event.id, event.name]);
+    const ids = (loaded.recipients ?? []).map((row) => row.user_id);
+    knownRecipients.current = new Set(ids);
+    setSelected(new Set(ids));
+  }, [event.id, event.name, refreshKey]);
+
+  /**
+   * Re-read the recipient list for the event in front of us without touching
+   * the draft. Attendance moves while the composer is open — a student scans
+   * in, a teacher corrects a mark — and mailing somebody the roll has since
+   * marked present is exactly what this prevents. The operation id does not
+   * change, so anyone Resend already accepted is still skipped, not re-sent.
+   */
+  const refreshRecipients = useCallback(async () => {
+    setRefreshing(true);
+    const { context: loaded, error } = await getMakeupEmailContext(event.id);
+    setRefreshing(false);
+    if (error || !loaded?.ok) {
+      setRefreshError(error ?? loaded?.message ?? "Could not refresh the recipient list.");
+      return;
+    }
+    setRefreshError(null);
+    setContext(loaded);
+
+    const ids = (loaded.recipients ?? []).map((row) => row.user_id);
+    const stillAbsent = new Set(ids);
+    const seen = knownRecipients.current;
+    knownRecipients.current = stillAbsent;
+    setSelected((current) => {
+      const next = new Set<string>();
+      // Everyone still selected who is still absent, plus anyone who only
+      // became absent since the list was last read. A student the teacher
+      // deliberately unticked stays unticked.
+      for (const id of current) if (stillAbsent.has(id)) next.add(id);
+      for (const id of ids) if (!seen.has(id)) next.add(id);
+      return next;
+    });
+  }, [event.id]);
 
   useEffect(() => {
     if (!open || loading) return;
@@ -176,12 +252,26 @@ function MakeupEmailComposer({
     // the same campaign, so students Resend already accepted are not mailed
     // twice and the teacher's edits stay. `startNewOperation()` is the explicit
     // follow-up path; choosing a different event loads a fresh draft. A failed
-    // load is not retried in a loop — the error offers its own Try again.
-    if (loadedFor.current === event.id) return;
-    void load();
-  }, [open, loading, event.id, load]);
+    // load is not retried in a loop — the error offers its own Try again. An
+    // attendance change behind the sheet re-reads the recipients only.
+    const key = `${event.id}:${refreshKey}`;
+    if (readKey.current === key) return;
+    if (loadedFor.current !== event.id) {
+      void load();
+    } else {
+      readKey.current = key;
+      void refreshRecipients();
+    }
+  }, [open, loading, event.id, refreshKey, load, refreshRecipients]);
+
+  /** The manual form of the same read, for a teacher who changed the roll. */
+  function refreshList() {
+    readKey.current = `${event.id}:${refreshKey}`;
+    void refreshRecipients();
+  }
 
   const recipients = context?.recipients ?? [];
+  const unreachable = context?.unreachable ?? [];
   const selectedRecipients = useMemo(
     () => recipients.filter((row) => selected.has(row.user_id)),
     [recipients, selected]
@@ -478,28 +568,43 @@ function MakeupEmailComposer({
                 <p className="type-heading">
                   Recipients <span className="tabular">({selectedRecipients.length} selected)</span>
                 </p>
-                <button
-                  type="button"
-                  className="text-sm font-semibold text-[var(--cue-green)] underline-offset-2 hover:underline"
-                  onClick={() =>
-                    setSelected(
-                      selectedRecipients.length === recipients.length
-                        ? new Set()
-                        : new Set(recipients.map((row) => row.user_id))
-                    )
-                  }
-                >
-                  {selectedRecipients.length === recipients.length ? "Clear all" : "Select all"}
-                </button>
+                <span className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    className="text-sm font-semibold text-[var(--cue-green)] underline-offset-2 hover:underline disabled:opacity-60"
+                    onClick={refreshList}
+                    disabled={refreshing || sending}
+                  >
+                    {refreshing ? "Checking…" : "Refresh list"}
+                  </button>
+                  <button
+                    type="button"
+                    className="text-sm font-semibold text-[var(--cue-green)] underline-offset-2 hover:underline"
+                    onClick={() =>
+                      setSelected(
+                        selectedRecipients.length === recipients.length
+                          ? new Set()
+                          : new Set(recipients.map((row) => row.user_id))
+                      )
+                    }
+                  >
+                    {selectedRecipients.length === recipients.length ? "Clear all" : "Select all"}
+                  </button>
+                </span>
               </div>
               <p className="type-meta">
-                Only students with a confirmed <strong>absent</strong> mark. Present, late and
-                excused records are not included.
+                Students expected at this event with no present, late or excused record for it —
+                that is what “absent” means here, so a correction on the roll takes them straight off
+                this list.
               </p>
+
+              {refreshError ? <Alert tone="error">{refreshError}</Alert> : null}
 
               {totalRecipients === 0 ? (
                 <Alert tone="info">
-                  No one is marked absent for this event, so there is no one to email.
+                  {Number(context.roster_size ?? 0) === 0
+                    ? "Nobody is on this program's roster, so there is no one to email."
+                    : `Nobody was absent: all ${context.roster_size} students expected at this event have a record for it.`}
                 </Alert>
               ) : (
                 <ul className="cue-card cue-list max-h-72 overflow-y-auto rounded-[var(--radius-panel)]">
@@ -516,8 +621,13 @@ function MakeupEmailComposer({
                           />
                           <span className="min-w-0 flex-1">
                             <span className="block truncate text-sm font-semibold">{row.name}</span>
-                            <span className="type-meta block truncate">
-                              {row.section || "No section"}
+                            <span className="flex min-w-0 items-baseline gap-2">
+                              <span className="type-meta min-w-0 truncate">
+                                {row.email || "No email address on file"}
+                              </span>
+                              <span className="type-meta shrink-0">
+                                {row.section || "No section"}
+                              </span>
                             </span>
                           </span>
                           <Badge className="bg-[var(--cue-absent-bg)] text-[var(--cue-absent)]">
@@ -530,18 +640,27 @@ function MakeupEmailComposer({
                 </ul>
               )}
 
-              {(context.unmarked ?? []).length > 0 ? (
+              {unreachable.length > 0 ? (
                 <div className="rounded-[var(--radius-control)] bg-[var(--cue-raised)] p-3">
                   <p className="flex items-center gap-2 text-sm font-semibold">
                     <Users aria-hidden="true" className="h-4 w-4" />
-                    {(context.unmarked ?? []).length} with no attendance record — not included
+                    {unreachable.length} more absent, with no working email — not included
                   </p>
                   <p className="type-meta mt-1">
-                    No record is not an absence. Mark the roll first if any of them missed the
-                    event.
+                    They were expected at this event and have no record for it, so they missed it
+                    too. Nobody can be emailed at these accounts:
                   </p>
+                  <ul className="mt-1.5 space-y-1">
+                    {unreachable.map((row) => (
+                      <li key={row.user_id} className="type-meta">
+                        <span className="font-semibold">{row.name}</span>
+                        {row.section ? ` · ${row.section}` : ""} — {UNREACHABLE_REASON[row.reason]}
+                      </li>
+                    ))}
+                  </ul>
                   <p className="type-meta mt-1.5">
-                    {(context.unmarked ?? []).map((row) => row.name).join(", ")}
+                    Hand these students the instructions another way, or add their address in the
+                    roster first and reload this list.
                   </p>
                 </div>
               ) : null}

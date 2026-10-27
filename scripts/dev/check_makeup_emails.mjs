@@ -164,7 +164,7 @@ const payload = (over = {}) => ({
   subject: "Make-Up Instructions for Fall Concert",
   instructions: "Come to Thursday's make-up rehearsal.",
   body_template:
-    "Hello {student_name},\n\nOur records show you were absent for {event_name} on {event_date} at {event_time}.\n\n{makeup_instructions}\n\nThank you,\n{teacher_name}\n{program_name}",
+    "Hi {student_first_name},\n\nOur records show you were absent for {event_name} on {event_date} at {event_time}.\n\n{makeup_instructions}\n\nThank you,\n{teacher_name}\n{program_name}",
   ...over,
 });
 
@@ -283,8 +283,13 @@ check(
 );
 check(
   "both students received their own copy",
-  traffic.mails.some((mail) => mail.body.text.includes("Hello Sam Student")) &&
-    traffic.mails.some((mail) => mail.body.text.includes("Hello Riley Reed"))
+  traffic.mails.some((mail) => mail.body.text.includes("Hi Sam,")) &&
+    traffic.mails.some((mail) => mail.body.text.includes("Hi Riley,"))
+);
+check(
+  "the greeting uses the student's first name",
+  !traffic.mails.some((mail) => mail.body.text.includes("{student_first_name}")) &&
+    traffic.mails.some((mail) => mail.body.text.includes("Hi Sam,"))
 );
 check(
   "the event date and time are rendered in school time",
@@ -336,6 +341,19 @@ check("a rescheduled event uses its latest date and time",
   body.ok === true &&
     traffic.mails[0]?.body.text.includes("Sunday, October 18, 2026") &&
     traffic.mails[0]?.body.text.includes("1:00 PM – 3:00 PM"),
+  traffic.mails[0]?.body.text
+);
+
+// A token the app does not know is never invented and never silently dropped:
+// it goes out exactly as the teacher typed it, which is why the composer lists
+// unresolved tokens and repeats them in the confirmation before sending.
+reset();
+response = await call(payload({ body_template: "Hi {student_first_name}, see {not_a_token}." }));
+body = await response.json();
+check(
+  "a supported token is substituted and an unknown one is left for the teacher to fix",
+  body.ok === true &&
+    traffic.mails[0]?.body.text.includes("Hi Sam, see {not_a_token}."),
   traffic.mails[0]?.body.text
 );
 

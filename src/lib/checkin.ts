@@ -20,6 +20,56 @@ export type CheckinKind = "new" | "repeat" | "unknown";
 const LOOKBACK_MS = 14 * 86_400_000;
 const CACHE_MS = 60_000;
 
+/**
+ * The server's fallback for an event with no saved end time: check-in closes 24
+ * hours after it starts (`record_checkin_for_session`). One constant, so the
+ * screens and the database cannot disagree about when an event is over.
+ */
+export const CHECKIN_NO_END_MS = 24 * 60 * 60 * 1000;
+
+export interface CheckinWindow {
+  /** The instant check-in closes, or NaN when the event's date is unusable. */
+  closesAt: number;
+  /** False once that instant has passed. */
+  open: boolean;
+}
+
+/**
+ * When check-in for one event closes — the same rule the database enforces: the
+ * saved end time, or 24 hours after the start when there is none. An event whose
+ * date cannot be read is left open for the server to judge rather than blocked
+ * here on a client-side guess.
+ *
+ * This is what keeps a refreshed page, an old QR code and a stale tab honest:
+ * the screen stops offering a check-in at the same instant the server stops
+ * accepting one.
+ */
+export function checkinWindow(
+  event: { date: string; end_date: string | null },
+  now = Date.now()
+): CheckinWindow {
+  const start = Date.parse(event.date);
+  const end = event.end_date ? Date.parse(event.end_date) : NaN;
+  const closesAt = Number.isFinite(end)
+    ? end
+    : Number.isFinite(start)
+      ? start + CHECKIN_NO_END_MS
+      : NaN;
+  return { closesAt, open: !Number.isFinite(closesAt) || now < closesAt };
+}
+
+/**
+ * Whether a refusal is the end-time gate rather than some other failure.
+ *
+ * `record_checkin_for_session` and `start_checkin_session` both answer "That
+ * event has already ended — …" and `supabase/tests/security_verification*.sql`
+ * pin those strings, so the phrase is part of the interface, not incidental
+ * prose. The write path re-checks the same rule whatever this says.
+ */
+export function isCheckinClosedMessage(message: string | null | undefined): boolean {
+  return typeof message === "string" && /already ended/i.test(message);
+}
+
 let cached: { profileId: string; at: number; rows: Map<string, number> } | null = null;
 let inFlight: { profileId: string; promise: Promise<Map<string, number>> } | null = null;
 

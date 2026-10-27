@@ -16,6 +16,7 @@ import {
 } from "./ui";
 import { fetchAttendance, fetchRoster, fetchSessionForEvent } from "../lib/queries";
 import { startCheckinSession } from "../lib/rpc";
+import { checkinWindow } from "../lib/checkin";
 import type { AttendanceRow, EventRow, RosterMember, RpcResult } from "../lib/types";
 import { usePrograms } from "../hooks/usePrograms";
 import { eventTypeChip, eventTypeLabel } from "../lib/constants";
@@ -65,6 +66,11 @@ export function LiveCheckIn({ event, onExit }: { event: EventRow; onExit: () => 
   }, []);
 
   const canRunCode = event.checkin_mode === "qr" || event.checkin_mode === "both";
+  // The event's own end time, not a session's five-minute timer: at that instant
+  // the projector stops being a check-in and becomes the roll. The same rule is
+  // enforced by `record_checkin_for_session`, so no code shown here would work
+  // after it either — the screen just stops pretending otherwise.
+  const ended = !checkinWindow(event, nowMs).open;
 
   const refreshLive = useCallback(async () => {
     if (!programId) return;
@@ -120,6 +126,11 @@ export function LiveCheckIn({ event, onExit }: { event: EventRow; onExit: () => 
     const id = window.setInterval(() => setNowMs(Date.now()), 1000);
     return () => window.clearInterval(id);
   }, []);
+
+  // A code must never stay on the wall for an event that has ended.
+  useEffect(() => {
+    if (ended && display) closeDisplay();
+  }, [ended, display, closeDisplay]);
 
   const start = useCallback(async () => {
     setBusy(true);
@@ -237,6 +248,22 @@ export function LiveCheckIn({ event, onExit }: { event: EventRow; onExit: () => 
           This event uses {event.checkin_mode === "none" ? "no check-in" : "staff marking the roll"}
           {" — "}mark it from the Attendance screen instead.
         </Alert>
+      ) : ended ? (
+        <Card className="space-y-3 p-5">
+          <div className="flex items-center gap-2">
+            <Timer aria-hidden="true" className="h-4 w-4 text-[var(--cue-muted)]" />
+            <p className="type-title">Check-in has ended</p>
+          </div>
+          <p className="text-sm">
+            This event closed at its end time
+            {event.end_date ? ` (${fmtTime(event.end_date)})` : ""}, so no code can be started or
+            scanned for it any more. Anyone who scanned before then is already on the roll below.
+          </p>
+          <p className="type-meta">
+            Still need to mark people? The Attendance screen takes the roll for this event, and the
+            make-up email for whoever missed it is unlocked there.
+          </p>
+        </Card>
       ) : !session || session.ok !== true || !checkinUrl ? (
         <Card className="space-y-4 p-5">
           <div>
@@ -461,7 +488,7 @@ export function LiveCheckIn({ event, onExit }: { event: EventRow; onExit: () => 
         />
       ) : null}
 
-      {display && session?.token && session.entry_code && checkinUrl ? (
+      {display && !ended && session?.token && session.entry_code && checkinUrl ? (
         <FullScreenCheckIn
           event={event}
           checkinUrl={checkinUrl}

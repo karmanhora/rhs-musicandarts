@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   CalendarDays,
@@ -37,6 +37,8 @@ import {
 import { MakeupEmailPanel } from "../components/MakeupEmailComposer";
 import { fetchAttendance, fetchEvents, fetchRoster, fetchStaffNotes } from "../lib/queries";
 import { markAttendanceBulk, overrideAttendanceWithReason } from "../lib/rpc";
+import { checkinWindow } from "../lib/checkin";
+import { useNow } from "../hooks/useNow";
 import type { AttendanceRow, AttendanceStatus, EventRow, RosterMember } from "../lib/types";
 import { usePrograms } from "../hooks/usePrograms";
 import {
@@ -87,6 +89,13 @@ export function AttendanceScreen() {
   const [attendance, setAttendance] = useState<AttendanceRow[]>([]);
   const [notes, setNotes] = useState<Map<string, string>>(new Map());
   const [error, setError] = useState<string | null>(null);
+  /**
+   * Bumped whenever the marks themselves change. The make-up composer watches
+   * it, so a student the roll has just marked present drops off the list the
+   * teacher is about to email. It never moves for a poll that found nothing new.
+   */
+  const [rollVersion, setRollVersion] = useState(0);
+  const rollSignature = useRef<string | null>(null);
 
   const [section, setSection] = useState<string>("all");
   const [query, setQuery] = useState("");
@@ -147,6 +156,14 @@ export function AttendanceScreen() {
       });
       const mine = rows.filter((r) => r.event_id === selected.id);
       setAttendance(mine);
+      const signature = mine
+        .map((r) => `${r.student_id}:${r.status}:${r.checked_in_at ?? ""}`)
+        .sort()
+        .join("|");
+      if (rollSignature.current !== signature) {
+        rollSignature.current = signature;
+        setRollVersion((value) => value + 1);
+      }
 
       const noteRows = await fetchStaffNotes(mine.map((r) => r.id));
       const map = new Map<string, string>();
@@ -162,6 +179,19 @@ export function AttendanceScreen() {
   useEffect(() => {
     void loadAttendance();
   }, [loadAttendance]);
+
+  const nowMs = useNow(30_000);
+  /** Still taking check-ins, so the roll is a live surface rather than a record. */
+  const liveRoll = selected ? checkinWindow(selected, nowMs).open : false;
+
+  // While the event can still take check-ins, the roll re-reads itself: a scan
+  // from the room, or a mark another staff member made, lands without anyone
+  // having to refresh the page. A quiet poll changes nothing and sends nothing.
+  useEffect(() => {
+    if (!liveRoll || !selected) return;
+    const id = window.setInterval(() => void loadAttendance(), 10_000);
+    return () => window.clearInterval(id);
+  }, [liveRoll, selected, loadAttendance]);
 
   // --- derived -------------------------------------------------------------
   // Only people who are actually in the program take the roll — someone a
@@ -201,9 +231,15 @@ export function AttendanceScreen() {
     return { present, late, excused, marked, unmarked: Math.max(0, students.length - marked) };
   }, [students, byStudent]);
 
+  /**
+   * The roll as it is worked: students with no mark for this event first, so
+   * whoever is still missing is never scrolled past, then everybody who has a
+   * record. Nothing is removed by checking in. `students` is already ordered
+   * (section, then name) and `sort` is stable, so both groups keep that order.
+   */
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return students.filter((s) => {
+    const filtered = students.filter((s) => {
       if (section !== "all" && (s.section_name || "none") !== section) return false;
       if (onlyUnmarked && byStudent.has(s.user_id)) return false;
       if (!q) return true;
@@ -212,6 +248,9 @@ export function AttendanceScreen() {
         s.profile.display_name.toLowerCase().includes(q)
       );
     });
+    return filtered.sort(
+      (a, b) => Number(byStudent.has(a.user_id)) - Number(byStudent.has(b.user_id))
+    );
   }, [students, section, onlyUnmarked, query, byStudent]);
 
   const sectionOptions = useMemo(() => {
@@ -662,15 +701,18 @@ export function AttendanceScreen() {
             </div>
 
             <p className="type-meta mt-2 px-1">
-              A student left unmarked has no record for this event — a report says “not recorded”,
-              which is not the same claim as absent. Tap anyone to mark them late, excused or absent,
-              or to leave a staff note.
+              Whoever has no mark closer to the top, so the students still missing are the ones you
+              see first. A student left unmarked has no record for this event — a report says “not
+              recorded”, which is what the make-up email treats as a miss. Tap anyone to mark them
+              late, excused or absent, or to leave a staff note.
             </p>
           </section>
 
           {/* Staff of the program only. The server refuses everyone else, and
               re-checks the event's latest end time before a single send. */}
-          {app.can("attendance.mark_present") ? <MakeupEmailPanel event={selected} /> : null}
+          {app.can("attendance.mark_present") ? (
+            <MakeupEmailPanel event={selected} refreshKey={rollVersion} />
+          ) : null}
           </>
         )}
       </div>

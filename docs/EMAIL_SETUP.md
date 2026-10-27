@@ -354,8 +354,8 @@ with no network, including both daylight-saving renderings.
 ## 6c. App email: post-event make-up instructions
 
 Migration 036 + the `send-makeup-emails` edge function let authorized program
-staff mail the students marked **absent** for a completed event. This is the
-only app mail a browser can trigger.
+staff mail the students who **missed** a completed event. This is the only app
+mail a browser can trigger.
 
 - **Where** — Attendance screen, below the roll, for staff with
 `attendance.mark_present` (director, secretary, or a custom role holding it):
@@ -371,24 +371,41 @@ program is refused with a message. The function re-reads the event schedule
 again during a long send, and renders `{event_date}` / `{event_time}` from that
 latest saved schedule — not the snapshot taken when the composer opened. The
 frontend clock cannot authorize anything.
-- **Who receives it** — only students with a confirmed `attendance_records.status
-= 'absent'` row for that event, an active membership in the event's program, a
-confirmed address, and no deactivated flag. Present, late and excused are not
-included (late is not treated as absent for make-up). Director/secretary staff
-accounts are excluded. A student with **no attendance row** is not assumed
-absent: the composer lists them separately for review, to be marked on the roll
-if needed.
+- **Who receives it** — the event's expected roster minus its records. Expected
+means an active membership in the event's program with a live (not deactivated)
+profile and a student role; attendance means a record for that event with status
+`present`, `late` or `excused`. Whoever is expected and has no such record is
+absent, so **a student with no attendance row is the common case**, not an
+exception: this schema has no stored `absent` status (`override_attendance()`
+deletes the row when a mark is set to absent), which is why the rule is derived
+rather than read. Late is not treated as an absence for make-up and an excused
+absence is already resolved; a correction on the roll takes that student off the
+list before the next send. Director/secretary staff accounts are excluded.
+Students who are absent but unreachable — no sign-in account, no address, an
+unconfirmed address — are listed separately **with the reason** instead of being
+dropped silently, and the composer shows the event's roster size so "everybody
+had a record" is distinguishable from a read that failed.
 - **Composer** — editable subject, editable message body, separate make-up
-instructions field, placeholder help, live preview, recipient list with
-the count and per-student remove, unmarked-student review, a warning list for
-unresolved placeholders or empty instructions, and a final confirmation before
-sending. Attendance is never modified by opening, previewing or sending.
-- **Placeholders** — `{student_name}`, `{event_name}`, `{event_date}`,
-`{event_time}`, `{program_name}`, `{teacher_name}`, `{makeup_instructions}`.
-Substitution happens server-side per recipient; the preview uses the same
-tokens. Subject newlines are stripped, the body is HTML-escaped and rendered as
-text with line breaks, and the lengths are capped (subject 200, instructions
-4,000, body 8,000).
+instructions field, placeholder help, live preview, recipient list with the
+count, each student's **name and the address their copy goes to**, per-student
+remove, a review of the absent students who cannot be emailed, a warning list
+for unresolved placeholders or empty instructions, and a final confirmation
+before sending. A **Refresh list** control — and an automatic re-read whenever
+the roll behind the sheet changes — updates the recipients without disturbing
+the draft: subject, instructions, message and delivery history stay, and the
+operation id does not change, so somebody Resend already accepted is still
+skipped rather than mailed twice. Attendance is never modified by opening,
+previewing or sending.
+- **Placeholders** — `{student_first_name}`, `{student_name}`, `{event_name}`,
+`{event_date}`, `{event_time}`, `{program_name}`, `{teacher_name}`,
+`{makeup_instructions}`. Substitution happens server-side per recipient; the
+preview uses the same tokens. A known token is always replaced (with an empty
+string when the value is missing); a token the app does not know is left exactly
+as the teacher typed it, which is why the composer warns about unresolved tokens
+and repeats them in the confirmation instead of sending silently. Subject
+newlines are stripped, the body is HTML-escaped and rendered as text with line
+breaks, and the lengths are capped (subject 200, instructions 4,000, body
+8,000).
 - **Not the digest preference** — `memberships.email_upcoming_events` controls
 the *upcoming-events* digest, not a teacher's post-event make-up instructions.
 The make-up email is a direct staff communication to the students the

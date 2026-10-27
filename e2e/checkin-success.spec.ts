@@ -249,3 +249,86 @@ test.describe("check-in confirmation", () => {
     expect(state!.checkOffset).toBe("0px");
   });
 });
+
+/**
+ * The event's scheduled end time is what closes check-in, and the rule lives in
+ * the database: `record_checkin_for_session` refuses a scan or a typed code past
+ * `coalesce(end_date, date + 24 hours)`, and `security_verification_v2.sql`
+ * pins that. These two tests are the other half — that the screens agree with it
+ * instead of leaving a student a form that cannot work, or a code on the wall
+ * for an event that is over.
+ */
+test.describe("check-in closure", () => {
+  test.setTimeout(300_000);
+
+  test("a closed event is reported instead of a success", async ({ page }) => {
+    await installMocks(page, true);
+    await mockPriorAttendance(page, []);
+    const calls = await mockRecordAttendance(page, {
+      ok: false,
+      message: "That event has already ended — attendance is closed.",
+    });
+
+    await page.goto(`/checkin?token=${TOKEN}`);
+
+    await expect(page.getByText("Check-in has closed")).toBeVisible({ timeout: 240_000 });
+    await expect(page.getByText(/stopped taking check-ins at its scheduled end time/)).toBeVisible();
+    await expect(page.getByText("You're checked in!")).toHaveCount(0);
+    await expect(page.locator(".cue-success-mark")).toHaveCount(0);
+    // The same refusal a refresh produces: one submission, no success.
+    expect(calls).toHaveLength(1);
+    // And the form that could no longer record anything is gone.
+    await expect(page.getByText("Scan or enter your code")).toHaveCount(0);
+  });
+
+  test("the projector shows the event has ended and offers no code", async ({ page }) => {
+    await installMocks(page, true);
+    const start = new Date(Date.now() - 3 * 60 * 60 * 1000);
+    const end = new Date(Date.now() - 2 * 60 * 60 * 1000);
+    await page.route(/\/rest\/v1\/events(\?.*)?$/, (route) =>
+      json(route, [
+        {
+          id: EVENT_ID,
+          ensemble_id: PROGRAM_ID,
+          name: EVENT_NAME,
+          type: "rehearsal",
+          event_type: "rehearsal",
+          date: start.toISOString(),
+          end_date: end.toISOString(),
+          all_day: false,
+          location: "RHS Band Room",
+          description: "",
+          google_calendar_uid: null,
+          google_calendar_updated_at: null,
+          google_calendar_synced_at: null,
+          checkin_mode: "qr",
+          attendance_requirement: "required",
+          event_source: "manual",
+          archived: false,
+          late_minutes: 10,
+          reminder_enabled: false,
+          reminder_minutes_before: 60,
+          created_by: null,
+          created_at: "2026-09-01T00:00:00.000Z",
+        },
+      ])
+    );
+    let sessionStarts = 0;
+    await page.route(`${SUPABASE_HOST}/rest/v1/rpc/start_checkin_session`, (route) => {
+      sessionStarts += 1;
+      return json(route, {
+        ok: false,
+        message: "That event has already ended — check-in is closed.",
+      });
+    });
+
+    await page.goto("/checkin");
+
+    await expect(page.getByText("Check-in has ended")).toBeVisible({ timeout: 240_000 });
+    await expect(page.getByRole("button", { name: "Start check-in" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "New code" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Full-screen display" })).toHaveCount(0);
+    // Nothing was even asked of the server: the screen knows the event is over.
+    expect(sessionStarts).toBe(0);
+  });
+});

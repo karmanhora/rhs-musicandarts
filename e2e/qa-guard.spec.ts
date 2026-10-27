@@ -43,9 +43,15 @@ async function measureOverflow(page: Page): Promise<Overflow> {
  * columns beyond the ones the check-in screen reads are what the event-detail
  * sheet renders.
  */
+/**
+ * Today's rehearsal, **in progress right now**: the projector only offers a live
+ * code while the event's saved end time is still ahead of it, so an event pinned
+ * to a fixed 15:30–17:30 window stops being "in progress" for every run after
+ * 17:30 and the review silently measures the ended state instead. The window is
+ * therefore built around the clock at the moment the test runs.
+ */
 async function serveTodaysEvent(page: Page): Promise<void> {
-  const today = new Date();
-  today.setHours(15, 30, 0, 0);
+  const today = new Date(Date.now() - 60 * 60 * 1000);
   await page.route(/\/rest\/v1\/events(\?.*)?$/, (route) =>
     route.fulfill({
       status: 200,
@@ -59,7 +65,7 @@ async function serveTodaysEvent(page: Page): Promise<void> {
           type: "rehearsal",
           event_type: "rehearsal",
           date: today.toISOString(),
-          end_date: new Date(today.getTime() + 2 * 60 * 60 * 1000).toISOString(),
+          end_date: new Date(today.getTime() + 3 * 60 * 60 * 1000).toISOString(),
           all_day: false,
           location: "RHS Band Room",
           description: "",

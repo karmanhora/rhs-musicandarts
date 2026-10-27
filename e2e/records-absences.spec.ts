@@ -380,3 +380,86 @@ for (const width of [360, 390, 1440]) {
     expect(overflow.overflowBy, JSON.stringify(overflow.offenders)).toBeLessThanOrEqual(1);
   });
 }
+
+/* -------------------------------------------------------- the live roll order */
+
+/**
+ * The roll is worked top-down, so the students who have not been marked sit at
+ * the top and the ones who are already recorded sit below them, in the roster's
+ * own section-then-name order inside each group. Nothing is removed by marking,
+ * and a manual mark moves that student without a page reload.
+ */
+test("the roll puts students with no mark first, and re-sorts after a mark", async ({ page }) => {
+  await installMocks(page, true);
+  await serveEvents(page);
+  await serveRoster(page);
+
+  const marks: Record<string, unknown>[] = [
+    {
+      id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+      event_id: HISTORY_EVENT,
+      student_id: STUDENTS[0].id,
+      attended: true,
+      checked_in_at: null,
+      status: "late",
+      excuse_reason: "",
+      is_late: true,
+      marked_by: PROFILE_ID,
+    },
+  ];
+  await page.route(/\/rest\/v1\/attendance_records(\?.*)?$/, (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      headers: {
+        "access-control-allow-origin": "*",
+        "content-range": `0-${Math.max(marks.length - 1, 0)}/${marks.length}`,
+      },
+      body: JSON.stringify(marks),
+    })
+  );
+  // A manual mark writes through the RPC the screen actually calls, so the
+  // re-read that follows it sees the new row.
+  await page.route(/\/rest\/v1\/rpc\/override_attendance_with_reason$/, async (route) => {
+    const body = route.request().postDataJSON() as { p_student_id: string; p_status: string };
+    marks.push({
+      id: `cccccccc-cccc-4ccc-8ccc-00000000000${marks.length}`,
+      event_id: HISTORY_EVENT,
+      student_id: body.p_student_id,
+      attended: body.p_status === "present" || body.p_status === "late",
+      checked_in_at: null,
+      status: body.p_status,
+      excuse_reason: "",
+      is_late: body.p_status === "late",
+      marked_by: PROFILE_ID,
+    });
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      headers: { "access-control-allow-origin": "*" },
+      body: JSON.stringify({ ok: true }),
+    });
+  });
+
+  await page.goto("/attendance", { waitUntil: "domcontentloaded" });
+  await expect(page.getByRole("heading", { level: 1 })).toBeVisible({ timeout: 45_000 });
+
+  const rows = page.locator("table tbody tr");
+  await expect(rows).toHaveCount(3);
+  // Marcus is already marked late, so the two without a mark come first and he
+  // is last. Inside each group the roll keeps its own order — section name
+  // alphabetically (Brass, Percussion and colorguard, Woodwinds), then the
+  // student's name — which is what makes this stable rather than reshuffling on
+  // every poll.
+  await expect(rows.nth(0)).toContainText("Devon Okafor");
+  await expect(rows.nth(1)).toContainText("Priya Raghunathan-Villanueva");
+  await expect(rows.nth(2)).toContainText("Marcus Ellery");
+
+  // Marking the top student present moves them below the ones still missing.
+  await rows.nth(0).getByRole("button", { name: "Present", exact: true }).click();
+  await expect(rows.nth(0)).toContainText("Priya Raghunathan-Villanueva");
+  await expect(rows.nth(1)).toContainText("Marcus Ellery");
+  await expect(rows.nth(2)).toContainText("Devon Okafor");
+  // Nobody is dropped by being marked.
+  await expect(rows).toHaveCount(3);
+});
