@@ -73,6 +73,7 @@ import {
   monthMatrix,
   relativeDay,
   startOfDay,
+  untilLabel,
 } from "../lib/date";
 
 /**
@@ -482,6 +483,11 @@ export function CalendarScreen() {
             <p className="text-sm font-semibold">Google Calendar</p>
             <p className="type-meta">
               {calendarSource ? `Connected: ${calendarSource.name}` : "No calendar connected"}
+              {/* The scheduled sync refreshes this without anyone pressing Import;
+                  a stale stamp is how a broken feed (404, throttle) shows up. */}
+              {calendarSource?.last_synced_at
+                ? ` · Synced ${untilLabel(calendarSource.last_synced_at)}`
+                : ""}
             </p>
           </div>
           <Button

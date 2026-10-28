@@ -33,7 +33,8 @@ deployment stay untouched.
   - [x] `DIGEST_FROM_NAME` = `RHS Music & Arts` — set 2026-10-18
   - [x] `PUBLIC_APP_URL` = `https://rhsattendance.org` — set 2026-10-18
   - [ ] `GOOGLE_CALENDAR_ICS_URL` (the RHS Band public ICS feed)
-  - [ ] `CALENDAR_SYNC_SECRET` (long random value for scheduled sync calls)
+  - [x] `CALENDAR_SYNC_SECRET` (long random value for scheduled sync calls)
+        — set 2026-10-27 for `sync-google-calendars`; see §2
 - [x] **Done 2026-10-20** — after applying migration 036, deploy the two event-email functions:
       `supabase functions deploy event-reminders --project-ref <NEW_PROJECT_REF> --no-verify-jwt --use-api`
       and
@@ -74,6 +75,28 @@ deployment stay untouched.
 - [ ] Note: `sync_google_calendar` currently runs with `verify_jwt = false` and
       accepts any signed-in user. Tightening to staff-only is **Phase 3 work**
       (docs/PLATFORM_PLAN.md §6 #4) — known and accepted for the clone window.
+      **Superseded 2026-10-27:** that function is not in this tree. The scheduled
+      pull is `sync-google-calendars` (below); the staff-facing path is
+      `import-google-calendar`, which authenticates the caller and checks
+      `attendance.manage_events`.
+- [x] **Done 2026-10-27** — deployed the repeating calendar sync, so an event
+      added, edited or deleted in Google reaches the app without anyone pressing
+      Import:
+      `supabase functions deploy sync-google-calendars --project-ref <NEW_PROJECT_REF> --no-verify-jwt --use-api`.
+      Server-to-server only (no CORS): it refuses every call without the
+      `x-calendar-sync-secret` header or the exact service-role bearer.
+      `[functions.sync-google-calendars] verify_jwt = false` in `supabase/config.toml`.
+      No migration: it reads `calendar_sources` and writes through the existing
+      `sync_google_calendar_events` RPC.
+- [x] **Done 2026-10-27** — `CALENDAR_SYNC_SECRET` (64 hex characters) set as a
+      function secret and stored in Vault; the sync cron job sends it as
+      `x-calendar-sync-secret`. It sends no mail, so it needs no Resend settings.
+- [ ] **Added 2026-10-27** — re-deploy `import-google-calendar` once too. Its
+      ICS fetch/parse code moved to
+      `supabase/functions/_shared/google-calendar.ts` (shared with the sync), and
+      it gains a bounded retry for Google's `429`/`503`, the throttle that made
+      imports fail on the first attempt:
+      `supabase functions deploy import-google-calendar --project-ref <NEW_PROJECT_REF> --use-api`.
 
 ## 2. Schedules (cron)
 
@@ -90,12 +113,9 @@ deployment stay untouched.
       grant all privileges on all tables in schema cron to postgres;
       create extension if not exists pg_net;
       ```
-- [ ] Recreate each job, e.g. the calendar sync (secret header set):
-      `select cron.schedule('google-calendar-sync', '*/5 * * * *', $$
-         select net.http_post(url := 'https://<NEW_PROJECT_REF>.supabase.co/functions/v1/sync_google_calendar',
-           headers := jsonb_build_object('x-calendar-sync-secret', '<CALENDAR_SYNC_SECRET>', 'Content-Type', 'application/json'),
-           body := '{}');
-      $$);`
+- [ ] ~~Recreate each job, e.g. the calendar sync (secret header set)~~ — that
+      snippet called `functions/v1/sync_google_calendar`, which this tree no longer
+      contains. Use **Repeating calendar sync** below instead.
 - [ ] Recreate any `send_signup_reminder` schedule if one existed on OLD (check `cron.job` output above).
 - [x] **Event digest** — one email a day per member with something in the next
       week, at **5pm Pacific**: `0 0 * * *` UTC, which is 5pm PDT / 4pm PST. A
@@ -231,6 +251,75 @@ deployment stay untouched.
       `public.event_announcement_deliveries` with `status = 'sent'`. A second run
       must send nothing. Not done on 2026-10-20 to avoid mailing the roster as a
       test.
+
+### Repeating calendar sync (added 2026-10-27)
+
+- [x] **Done 2026-10-27** — sync secret stored in **Vault** (never in `cron.job`
+      plain text):
+
+      ```sql
+      select vault.create_secret('<CALENDAR_SYNC_SECRET>', 'calendar_sync_secret',
+        'x-calendar-sync-secret header for the google-calendar-sync cron job');
+      ```
+
+- [x] **Done 2026-10-27** (job 4) — scheduled **every 15 minutes**, so a Google
+      Calendar change shows up in
+      the app within a quarter of an hour. The cadence is deliberately modest:
+      Google throttles the anonymous `basic.ics` endpoint per IP and the Edge
+      runtime's egress is shared, which is exactly the `429` this project already
+      hit. The function retries a throttled or unavailable feed twice with backoff
+      before reporting it.
+
+      ```sql
+      select cron.schedule('google-calendar-sync', '*/15 * * * *', $$
+        select net.http_post(
+          url := 'https://<NEW_PROJECT_REF>.supabase.co/functions/v1/sync-google-calendars',
+          headers := jsonb_build_object(
+            'x-calendar-sync-secret',
+            (select decrypted_secret from vault.decrypted_secrets
+              where name = 'calendar_sync_secret'),
+            'Content-Type', 'application/json'),
+          body := '{}'::jsonb,
+          -- 5s is pg_net's default: it cuts the run off mid-fetch and records a
+          -- NULL response while cron.job_run_details still says "succeeded".
+          timeout_milliseconds := 120000);
+      $$);
+      ```
+
+- [x] **Done 2026-10-27** — ran the hand check with `{"dry_run": true}`. It
+      fetches and parses every connected feed and writes nothing:
+
+      ```bash
+      curl -sS -X POST "https://<NEW_PROJECT_REF>.supabase.co/functions/v1/sync-google-calendars" \
+        -H "Content-Type: application/json" \
+        -H "x-calendar-sync-secret: <CALENDAR_SYNC_SECRET>" \
+        -d '{"dry_run": true}'
+      ```
+
+      Each result names the program, the event count and, if the feed failed, why
+      (a made-private calendar answers `404`; a throttled one `429`). A dry run
+      answers `200` with `ok: false` when any feed is broken, so read `results`,
+      not just the status.
+
+      **Observed 2026-10-27:** the first calls from the deployed function answered
+      `429` for both connected feeds while the same two addresses returned `200`
+      from an ordinary connection — Google throttles this endpoint **by IP**, and
+      the Edge runtime's egress is shared. A named `User-Agent` did not change it.
+      What did clear it: stop retrying the `429` inside the run. A throttled
+      address stays throttled for minutes, so three attempts per feed only spent
+      more of the same budget; the function now makes one request per feed, stops
+      the run at the first `429`, and lets the next quarter hour retry. The next
+      run then reported `146` and `109` events updated with nothing archived.
+      If every run fails for hours, the egress address is the cause, not the feed
+      or the URL — do not “fix” the calendar settings.
+
+- [ ] Then one real run, and confirm in the app: add an event in Google Calendar,
+      wait for the next quarter hour, and check it appears on the Calendar screen
+      under the right program. Deleting it in Google must archive it in the app on
+      the following run (archive, never delete — attendance history keeps the row),
+      and `select last_synced_at from public.calendar_sources` must advance.
+      Nothing is mailed by this job: the sync RPC sets
+      `app.suppress_event_notifications`.
 
 ### Absence-request review emails (migration 20261024223123)
 

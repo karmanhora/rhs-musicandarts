@@ -91,6 +91,13 @@ verify_jwt = false
 [functions.absence-request-emails]
 verify_jwt = false
 
+# Scheduled, server-to-server only. Called by Supabase Cron every 15 minutes with
+# the `x-calendar-sync-secret` header (CALENDAR_SYNC_SECRET) to pull each
+# connected Google feed again. It writes events through a service-role RPC, so no
+# browser may trigger a run; the manual import stays `import-google-calendar`.
+[functions.sync-google-calendars]
+verify_jwt = false
+
 # Browser-invoked by staff (the make-up composer). The platform verifies the
 # JWT, and the function verifies the account and its program staff role again
 # before reading attendance or calling Resend. Default is true; kept explicit so
