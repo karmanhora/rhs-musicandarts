@@ -321,6 +321,17 @@ deployment stay untouched.
       Nothing is mailed by this job: the sync RPC sets
       `app.suppress_event_notifications`.
 
+      **Verified 2026-10-27 (data path):** a throwaway program drove the whole
+      loop through `sync_google_calendar_events`. An event added to the feed was
+      inserted with its type-derived attendance (`rehearsal` → required, QR); an
+      edit kept the **same `events.id`** and updated name, date and location in
+      place; a cancelled event was archived, not deleted, and its row was left
+      intact; an empty feed archived nothing. The throwaway program and its rows
+      were removed afterwards — 0 leftovers, and the band's 255 active synced
+      events plus 8 archived were unchanged. Still unconfirmed: the same three
+      steps typed into the Google Calendar UI itself, which needs access to the
+      school's calendar.
+
 ### Absence-request review emails (migration 20261024223123)
 
 - [x] **Done 2026-10-24** — store the absence-email secret in **Vault** (never in
