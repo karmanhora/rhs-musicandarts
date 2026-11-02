@@ -247,6 +247,7 @@ export function NotesField({ dark }: {
       ref={canvasRef}
       aria-hidden="true"
       data-notes-field=""
+      data-motion={reduced ? "reduced" : "full"}
       /*
        * Behind every painted surface on the page, including in-flow content: a
        * negative index on a transparent fixed layer is what lets the note field

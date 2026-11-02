@@ -449,6 +449,31 @@ test.describe("flying-notes overlay", () => {
     }
   });
 
+  test("resumes when the device stops asking for reduced motion", async ({ page }) => {
+    await installMocks(page);
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto("/");
+    const canvas = page.locator("[data-notes-field]");
+    await expect(canvas).toHaveAttribute("data-motion", "full");
+    await page.waitForFunction(NOTES_READY(), undefined, { timeout: 20_000 });
+
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await expect(canvas).toHaveAttribute("data-motion", "reduced", { timeout: 5_000 });
+    await page.waitForTimeout(800);
+    const stillA = await canvas.screenshot();
+    await page.waitForTimeout(900);
+    const stillB = await canvas.screenshot();
+    expect(Buffer.compare(stillA, stillB), "the reduced field is still animating").toBe(0);
+
+    await page.emulateMedia({ reducedMotion: "no-preference" });
+    await expect(canvas).toHaveAttribute("data-motion", "full", { timeout: 5_000 });
+    await page.waitForTimeout(800);
+    const movingA = await canvas.screenshot();
+    await page.waitForTimeout(900);
+    const movingB = await canvas.screenshot();
+    expect(Buffer.compare(movingA, movingB), "the field did not resume").not.toBe(0);
+  });
+
   test("is unreachable by pointer and by the accessibility tree", async ({ page }) => {
     await installMocks(page);
     await page.goto("/");

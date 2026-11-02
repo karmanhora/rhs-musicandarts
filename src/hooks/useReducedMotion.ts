@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 
 const KEY = "rhs-band:reduce-motion";
 const EVENT = "rhs-band:reduce-motion-changed";
+const QUERY = "(prefers-reduced-motion: reduce)";
 
 /**
  * Stored preference, or the operating system's. `null` means "follow the
@@ -19,6 +20,14 @@ function read(): MotionPreference {
   return "system";
 }
 
+/** The device's current answer, read safely outside a browser. */
+function systemReduced(): boolean {
+  return (
+    typeof window !== "undefined" &&
+    (window.matchMedia?.(QUERY).matches ?? false)
+  );
+}
+
 /**
  * The reduced-motion switch, as a class on <html>.
  *
@@ -29,8 +38,7 @@ function read(): MotionPreference {
  * reduction.
  */
 function paint(preference: MotionPreference): void {
-  const systemReduced = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
-  const reduce = preference === "reduced" || (preference === "system" && systemReduced);
+  const reduce = preference === "reduced" || (preference === "system" && systemReduced());
   document.documentElement.classList.toggle("reduce-motion", reduce);
 }
 
@@ -43,19 +51,27 @@ export function useReducedMotion(): {
   const [preference, setState] = useState<MotionPreference>(() =>
     typeof window === "undefined" ? "system" : read()
   );
+  /**
+   * The device's own setting is state, not a value read during render. When it
+   * changes — a person turns animation effects back on in the OS, or a browser
+   * stops emulating a reduced-motion preference — the field has to be rebuilt,
+   * not left on the single frame it drew under the old answer.
+   */
+  const [deviceReduced, setDeviceReduced] = useState<boolean>(() => systemReduced());
 
   useEffect(() => {
     paint(preference);
     const onChange = () => setState(read());
     window.addEventListener(EVENT, onChange);
-    const media = window.matchMedia?.("(prefers-reduced-motion: reduce)");
-    const onMedia = () => paint(preference);
+
+    const media = window.matchMedia?.(QUERY);
+    const onMedia = () => setDeviceReduced(media?.matches ?? false);
     media?.addEventListener?.("change", onMedia);
     return () => {
       window.removeEventListener(EVENT, onChange);
       media?.removeEventListener?.("change", onMedia);
     };
-  }, [preference]);
+  }, [preference, deviceReduced]);
 
   const setPreference = useCallback((next: MotionPreference) => {
     try {
@@ -69,10 +85,7 @@ export function useReducedMotion(): {
     setState(next);
   }, []);
 
-  const reduced =
-    preference === "reduced" ||
-    (preference === "system" &&
-      (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false));
+  const reduced = preference === "reduced" || (preference === "system" && deviceReduced);
 
   return { preference, setPreference, reduced };
 }
