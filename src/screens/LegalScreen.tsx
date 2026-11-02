@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom";
 import { ArrowLeft, Mail } from "lucide-react";
-import { Alert } from "../components/ui";
+import { Alert, Stage } from "../components/ui";
 import { APP_NAME, ORG_NAME } from "../lib/constants";
 
 /**
@@ -20,7 +20,7 @@ import { APP_NAME, ORG_NAME } from "../lib/constants";
  *     that the project does not have.
  */
 
-type LegalPage = "privacy" | "terms";
+type LegalPage = "privacy" | "terms" | "license";
 
 interface LegalSection {
   heading: string;
@@ -32,6 +32,9 @@ interface LegalDoc {
   title: string;
   kicker: string;
   updated: string;
+  /** Optional opening panel. Only the licensing notice uses it today. */
+  lead?: string;
+  facts?: { label: string; value: string }[];
   /** Optional review notice. The published privacy policy has none. */
   banner?: string;
   /** Optional clickable contact block rendered after the sections. */
@@ -236,10 +239,88 @@ const TERMS: LegalDoc = {
   ],
 };
 
+const LICENSE_NOTICE: LegalDoc = {
+  title: "Copyright & Licensing",
+  kicker: "Copyright & Licensing",
+  updated: "Effective date: November 1, 2026",
+  lead:
+    "This page explains who owns the original work in the Redmond High School Music and Arts Attendance app, what may be done with it, and how maintenance is authorised. It is a licensing notice, not legal advice.",
+  facts: [
+    { label: "Copyright holder", value: "Karman Hora" },
+    { label: "Status", value: "Proprietary · All Rights Reserved" },
+    { label: "Effective", value: "November 1, 2026" },
+  ],
+  contact: {
+    email: CONTACT_EMAIL,
+    note:
+      "For permission requests or questions about this notice. This is the project's existing published contact address; a request is not permission until it is granted in writing.",
+  },
+  sections: [
+    {
+      heading: "1. Copyright Ownership",
+      paragraphs: [
+        "Karman Hora is the copyright holder of the original materials in this project: the application's source code, its documentation, and the interface and visual designs created for it.",
+        "Those materials are protected by copyright from the date they were created. This page records the position for the project as it stands on the effective date; the repository's LICENSE file is the formal notice.",
+        "Third-party libraries, frameworks, fonts, icons, and other assets are not claimed as original work. They remain the property of their respective authors and are used under their own licenses.",
+      ],
+    },
+    {
+      heading: "2. Proprietary Software",
+      paragraphs: [
+        "This is proprietary software. It is not open source, and no open-source license is granted for the original materials.",
+        "The website and the GitHub repository are public: the site serves its authorized programs, and the repository is part of the developer's portfolio. Public visibility is not a license.",
+        "You may view the website and the public repository. Viewing, cloning, or forking through GitHub's own features does not grant permission to reuse the original code in another product, to republish it, or to operate an unauthorized copy.",
+      ],
+    },
+    {
+      heading: "3. Restrictions",
+      paragraphs: [
+        "Unauthorized reproduction, redistribution, commercial reuse, and republication of the original copyrighted materials are not permitted without appropriate authorization.",
+        "In particular, no permission is granted to:",
+      ],
+      bullets: [
+        "Copy or reproduce the software or substantial portions of its original source code.",
+        "Modify, redistribute, republish, or create derivative works from the original materials.",
+        "Use the software or its original materials for commercial purposes.",
+        "Claim authorship or ownership of the original project.",
+        "Reuse substantial portions of the software in another project without prior written permission.",
+      ],
+    },
+    {
+      heading: "4. Third-Party Components",
+      paragraphs: [
+        "The application uses third-party libraries, frameworks, fonts, and icons, including React, Vite, Tailwind CSS, React Router, the Supabase JavaScript client, lucide-react, html5-qrcode, qrcode.react, and locally bundled IBM Plex Sans and Barlow Condensed fonts.",
+        "Those components remain subject to their respective licenses, including the SIL Open Font License for the bundled fonts. Nothing on this page overrides, narrows, or replaces a third-party license, and no third-party file or dependency has been modified to add the copyright holder's name.",
+      ],
+    },
+    {
+      heading: "5. Future Maintenance and Succession",
+      paragraphs: [
+        "The copyright holder may authorize a designated successor in writing to maintain and operate the application after graduation. That authorization can cover bug fixes, security work, dependency and infrastructure updates, and approved development.",
+        "Maintenance authorization does not transfer copyright ownership of the original materials, and it does not make the successor the author of the original work. Technical maintenance and copyright ownership are separate matters.",
+        "Future contributions are governed by their own written terms. A contribution is not assumed to belong to the copyright holder merely because it was made to this project.",
+      ],
+    },
+    {
+      heading: "6. Permission Requests",
+      paragraphs: [
+        "Written permission is required for uses not permitted by this notice or by a third-party license. A request should identify the material, the intended use, whether the use is commercial, and how the material would be distributed.",
+        "The project's published contact address is " + CONTACT_EMAIL + ". It is the only contact address published by this project; do not rely on an address found elsewhere. A request is not permission until the copyright holder answers in writing.",
+      ],
+    },
+  ],
+};
+
+const PAGE_LINKS: Record<LegalPage, { to: string; label: string }> = {
+  privacy: { to: "/privacy", label: "Privacy Policy" },
+  terms: { to: "/terms", label: "Terms of Use" },
+  license: { to: "/license", label: "Copyright & Licensing" },
+};
+
 /** Public legal pages — readable without signing in. */
 export function LegalScreen({ page }: { page: LegalPage }) {
-  const doc = page === "privacy" ? PRIVACY : TERMS;
-  const other = page === "privacy" ? { to: "/terms", label: "Terms of Use" } : { to: "/privacy", label: "Privacy Policy" };
+  const doc = page === "privacy" ? PRIVACY : page === "terms" ? TERMS : LICENSE_NOTICE;
+  const others = (Object.keys(PAGE_LINKS) as LegalPage[]).filter((key) => key !== page);
 
   return (
     <div className="min-h-full overflow-x-hidden bg-[var(--cue-page)] text-[var(--cue-ink)]">
@@ -266,6 +347,27 @@ export function LegalScreen({ page }: { page: LegalPage }) {
           {doc.title}
         </h1>
         <p className="mt-3 text-sm text-[var(--cue-muted)]">{doc.updated}</p>
+
+        {doc.lead ? (
+          <Stage motif className="mt-7 p-5 sm:p-7">
+            <p className="type-kicker text-[var(--cue-gold-on-brand)]">The notice in short</p>
+            <p className="mt-2 max-w-2xl text-[0.9375rem] leading-relaxed text-[var(--cue-stage-ink)]">
+              {doc.lead}
+            </p>
+            {doc.facts ? (
+              <dl className="mt-6 grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-3">
+                {doc.facts.map((fact) => (
+                  <div key={fact.label} className="min-w-0">
+                    <dt className="type-label text-[var(--cue-gold-on-brand)]">{fact.label}</dt>
+                    <dd className="mt-1 text-sm font-semibold text-[var(--cue-stage-ink)]">
+                      {fact.value}
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+            ) : null}
+          </Stage>
+        ) : null}
 
         {doc.banner ? (
           <div className="mt-5">
@@ -307,15 +409,34 @@ export function LegalScreen({ page }: { page: LegalPage }) {
           </section>
         ) : null}
 
-        <div className="mt-10 border-t border-[var(--cue-border)] pt-5 text-sm">
-          <Link
-            viewTransition
-            to={other.to}
-            className="inline-flex min-h-11 items-center font-semibold text-[var(--cue-action)] underline decoration-[var(--cue-gold)] decoration-2 underline-offset-4"
+        <footer className="mt-10 border-t border-[var(--cue-border)] pt-5">
+          <nav
+            aria-label="Legal documents"
+            className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-5"
           >
-            Read the {other.label}
-          </Link>
-        </div>
+            {others.map((key) => (
+              <Link
+                key={key}
+                viewTransition
+                to={PAGE_LINKS[key].to}
+                className="inline-flex min-h-11 items-center text-sm font-semibold text-[var(--cue-leaf)] underline decoration-[var(--cue-gold)] decoration-2 underline-offset-4"
+              >
+                Read the {PAGE_LINKS[key].label}
+              </Link>
+            ))}
+            {page === "license" ? (
+              <a
+                href="https://github.com/karmanhora/rhs-musicandarts/blob/main/LICENSE"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex min-h-11 items-center text-sm font-semibold text-[var(--cue-leaf)] underline decoration-[var(--cue-gold)] decoration-2 underline-offset-4"
+              >
+                LICENSE file on GitHub
+              </a>
+            ) : null}
+          </nav>
+          <p className="type-meta mt-4">© 2026 Karman Hora. All Rights Reserved.</p>
+        </footer>
       </main>
     </div>
   );

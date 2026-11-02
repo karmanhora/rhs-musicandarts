@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { NavLink, Outlet, useNavigate } from "react-router-dom";
+import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
 import {
   BarChart3,
   Bell,
@@ -484,6 +484,20 @@ function AccountSheet({ open, onClose }: { open: boolean; onClose: () => void })
         >
           Sign out
         </Button>
+
+        {/* The copyright notice lives here rather than on every screen: the
+            account sheet is reachable from every signed-in view, so the notice
+            is always one tap away without adding a footer to the dashboard. */}
+        <p className="type-meta text-center leading-relaxed">
+          © 2026 Karman Hora. All Rights Reserved.{" "}
+          <Link
+            to="/license"
+            onClick={onClose}
+            className="inline-flex min-h-11 items-center font-semibold text-[var(--cue-leaf)] underline decoration-[var(--cue-gold)] decoration-2 underline-offset-4"
+          >
+            Copyright & Licensing
+          </Link>
+        </p>
       </div>
     </Sheet>
   );

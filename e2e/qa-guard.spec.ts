@@ -106,7 +106,7 @@ test.describe("public pages", () => {
     test(`auth and legal pages have no horizontal overflow at ${width}px`, async ({ page }) => {
       await installMocks(page);
       await page.setViewportSize({ width, height: 780 });
-      for (const path of ["/sign-in", "/sign-up", "/forgot-password", "/privacy", "/terms"]) {
+      for (const path of ["/sign-in", "/sign-up", "/forgot-password", "/privacy", "/terms", "/license"]) {
         await page.goto(path);
         await expect(page.locator("main, h1").first()).toBeVisible();
         const result = await measureOverflow(page);
@@ -125,6 +125,51 @@ test.describe("public pages", () => {
     const text = await page.locator("main").innerText();
     // A published policy must never ship with `[TO BE SET]`-style placeholders.
     expect(text).not.toMatch(/\[[^\]]+\]/);
+  });
+
+  test("licensing page is public and states the current ownership position", async ({ page }) => {
+    await installMocks(page);
+    await page.goto("/license");
+    await expect(
+      page.getByRole("heading", { level: 1, name: "Copyright & Licensing" })
+    ).toBeVisible();
+    const text = await page.locator("main").innerText();
+    expect(text).toContain("Karman Hora");
+    expect(text).toContain("All Rights Reserved");
+    expect(text).toContain("November 1, 2026");
+    expect(text).not.toMatch(/\[[^\]]+\]/);
+    await expect(page.locator('a[href="mailto:privacy@rhsattendance.org"]')).toBeVisible();
+
+    // Tablet and desktop are the widths where the fact strip becomes a row.
+    for (const width of [768, 1440]) {
+      await page.setViewportSize({ width, height: 900 });
+      const result = await measureOverflow(page);
+      expect(
+        result.offenders,
+        `/license at ${width}px: ${JSON.stringify(result.offenders, null, 2)}`
+      ).toEqual([]);
+      expect(result.overflowBy, `/license at ${width}px`).toBeLessThanOrEqual(0);
+    }
+
+    // The page must keep working in the theme a visitor saved on this device.
+    await page.addInitScript(() => localStorage.setItem("rhs-band:dark", "true"));
+    await page.reload();
+    await expect(page.locator("html")).toHaveClass(/dark/);
+    await expect(
+      page.getByRole("heading", { level: 1, name: "Copyright & Licensing" })
+    ).toBeVisible();
+  });
+
+  test("the landing footer carries the notice and opens the licence page", async ({ page }) => {
+    await installMocks(page);
+    await page.goto("/");
+    await expect(page.getByText("© 2026 Karman Hora. All Rights Reserved.")).toBeVisible();
+    const link = page.getByRole("link", { name: "Copyright & Licensing" });
+    await expect(link).toHaveAttribute("href", "/license");
+    await link.click();
+    await expect(
+      page.getByRole("heading", { level: 1, name: "Copyright & Licensing" })
+    ).toBeVisible();
   });
 
   test("masthead does not touch the top edge of the viewport", async ({ page }) => {
@@ -175,6 +220,27 @@ test.describe("signed-in screens", () => {
     "/new-program",
     "/teacher",
   ];
+
+  test("the signed-in account sheet carries the notice and licence link", async ({ page }) => {
+    await installMocks(page, true);
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto("/");
+    await page.waitForTimeout(2200);
+
+    await page.getByRole("button", { name: /your account/i }).click();
+    const dialog = page.getByRole("dialog");
+    await expect(dialog).toBeVisible();
+    await expect(
+      dialog.getByText(/© 2026 Karman Hora\. All Rights Reserved\./)
+    ).toBeVisible();
+
+    const link = dialog.getByRole("link", { name: "Copyright & Licensing" });
+    await expect(link).toHaveAttribute("href", "/license");
+    await link.click();
+    await expect(
+      page.getByRole("heading", { level: 1, name: "Copyright & Licensing" })
+    ).toBeVisible();
+  });
 
   test("calendar managers can open the Google Calendar import sheet", async ({ page }) => {
     await installMocks(page, true);

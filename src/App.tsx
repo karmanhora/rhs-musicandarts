@@ -39,6 +39,7 @@ function SessionRoutes() {
             district reviewer) never lands on a spinner that hides the notice. */}
         <Route path="/privacy" element={<LegalScreen page="privacy" />} />
         <Route path="/terms" element={<LegalScreen page="terms" />} />
+        <Route path="/license" element={<LegalScreen page="license" />} />
         <Route path="*" element={<Splash label="Signing you in…" />} />
       </Routes>
     );
@@ -57,6 +58,7 @@ function SessionRoutes() {
             being asked to accept. */}
         <Route path="/privacy" element={<LegalScreen page="privacy" />} />
         <Route path="/terms" element={<LegalScreen page="terms" />} />
+        <Route path="/license" element={<LegalScreen page="license" />} />
         <Route path="*" element={<Navigate to="/reset-password" replace />} />
       </Routes>
     );
@@ -84,6 +86,7 @@ function SessionRoutes() {
         {/* The public notices: open to anyone, signed in or not. */}
         <Route path="/privacy" element={<LegalScreen page="privacy" />} />
         <Route path="/terms" element={<LegalScreen page="terms" />} />
+        <Route path="/license" element={<LegalScreen page="license" />} />
         {/*
           A deep link into the app — most importantly `/checkin?token=…` from a
           scanned QR code — lands on sign-in, and the auth screen sends them on

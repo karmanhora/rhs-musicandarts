@@ -185,6 +185,7 @@ function ProgramRoutes() {
         <Route path="*" element={<JoinProgramScreen standalone />} />
         <Route path="/privacy" element={<LegalScreen page="privacy" />} />
         <Route path="/terms" element={<LegalScreen page="terms" />} />
+        <Route path="/license" element={<LegalScreen page="license" />} />
       </Routes>
     );
   }
@@ -195,6 +196,7 @@ function ProgramRoutes() {
           the Profile screen once you are signed in. */}
       <Route path="/privacy" element={<LegalScreen page="privacy" />} />
       <Route path="/terms" element={<LegalScreen page="terms" />} />
+      <Route path="/license" element={<LegalScreen page="license" />} />
       <Route element={<AppShell />}>
         <Route path="/" element={<HomeScreen />} />
         <Route path="/calendar" element={<CalendarScreen />} />

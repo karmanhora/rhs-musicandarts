@@ -34,6 +34,19 @@ The application is intended exclusively for its authorized school programs and u
 
 No license is granted for reuse or redistribution.
 
+## Copyright & Licensing
+
+Copyright © 2026 Karman Hora. **All Rights Reserved.**
+
+This is proprietary software. Its original source code, documentation, and designs are protected by copyright and are not released under an open-source licence.
+
+This repository and the website at https://rhsattendance.org are public. Public visibility does not grant permission to copy, modify, redistribute, republish, or commercially reuse the original materials. GitHub's own platform terms continue to allow users to view and fork public repositories; that platform access is separate from, and does not grant, a licence to reuse this project's original code.
+
+Written authorisation is required for any use not otherwise permitted. Third-party libraries, frameworks, fonts, icons, and other assets remain subject to their respective licences; nothing in this notice overrides them.
+
+- [LICENSE](LICENSE) — the full proprietary licence notice.
+- [Copyright & Licensing](https://rhsattendance.org/license) — the public licensing page.
+
 ## Project Status
 
 Actively maintained by the project owner for its intended school community.

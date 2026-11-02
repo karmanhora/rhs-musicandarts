@@ -295,7 +295,10 @@ export function WelcomeScreen() {
           className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-x-6 gap-y-3 px-5 py-5 text-sm text-[var(--cue-muted)] sm:px-8"
           data-notes-calm
         >
-          <span className="type-meta">Redmond High School · Music &amp; Arts</span>
+          <div className="min-w-0">
+            <span className="type-meta block">Redmond High School · Music &amp; Arts</span>
+            <span className="type-meta mt-1 block">© 2026 Karman Hora. All Rights Reserved.</span>
+          </div>
           <div className="flex flex-wrap items-center gap-x-5 gap-y-1">
             <nav aria-label="Legal" className="flex items-center gap-5">
               <Link
@@ -311,6 +314,13 @@ export function WelcomeScreen() {
                 className="motion-press inline-flex min-h-11 items-center underline underline-offset-4 hover:text-[var(--cue-ink)]"
               >
                 Terms of Use
+              </Link>
+              <Link
+                viewTransition
+                to="/license"
+                className="motion-press inline-flex min-h-11 items-center underline underline-offset-4 hover:text-[var(--cue-ink)]"
+              >
+                Copyright & Licensing
               </Link>
             </nav>
             <Link
