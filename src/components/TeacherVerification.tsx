@@ -138,9 +138,8 @@ export function TeacherVerification({
           nobody is left thinking they are already a teacher. */}
       <Alert tone="info">
         <span className="font-semibold">Teacher access is pending. </span>
-        Until your invitation code is verified, this account keeps its ordinary permissions: your
-        own attendance, and any program you join with a join code. It cannot start or run a program
-        yet.
+        Until your invitation code is verified, this account keeps its ordinary permissions. It
+        cannot start or run a program yet.
       </Alert>
 
       <form className="space-y-4" onSubmit={(e) => void submit(e)}>

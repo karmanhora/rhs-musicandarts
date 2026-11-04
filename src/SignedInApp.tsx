@@ -7,6 +7,7 @@ import { Alert, Button } from "./components/ui";
 import { LoadingQuote, MusicLoader } from "./components/Splash";
 import { LegalScreen } from "./screens/LegalScreen";
 import { ProgramsProvider, usePrograms } from "./hooks/usePrograms";
+import { useAuth } from "./hooks/useAuth";
 import { PreferencesProvider } from "./hooks/usePreferences";
 import { AvatarUrlProvider } from "./hooks/useAvatars";
 import type { PermissionCode } from "./lib/permissions";
@@ -144,6 +145,7 @@ function AnyPermissionGate({
 /** Everything that requires a resolved program membership. */
 function ProgramRoutes() {
   const app = usePrograms();
+  const auth = useAuth();
 
   if (app.status === "loading") return <RouteSkeleton />;
 
@@ -182,7 +184,22 @@ function ProgramRoutes() {
         {/* Teacher registration, reachable with no roster at all: it is the one
             thing an invited teacher can do before they belong anywhere. */}
         <Route path="/teacher" element={<TeacherVerifyScreen standalone />} />
-        <Route path="*" element={<JoinProgramScreen standalone />} />
+        {/* Which door a person with no roster lands on. A student meets the
+            join-code form; a teacher who has not verified an invitation meets
+            the invitation form and nothing else, because two code boxes on one
+            screen is how somebody types the wrong code. `/join` stays reachable
+            by URL for a teacher who really is joining somebody elses roster. */}
+        <Route path="/join" element={<JoinProgramScreen standalone />} />
+        <Route
+          path="*"
+          element={
+            auth.accountType === "teacher" && !app.mayStartProgram ? (
+              <TeacherVerifyScreen standalone />
+            ) : (
+              <JoinProgramScreen standalone />
+            )
+          }
+        />
         <Route path="/privacy" element={<LegalScreen page="privacy" />} />
         <Route path="/terms" element={<LegalScreen page="terms" />} />
         <Route path="/license" element={<LegalScreen page="license" />} />

@@ -187,11 +187,13 @@ accounts can only join through a director's code. Directors are the only ones wh
 can then add anybody else, through their program's join code.
 
 The teacher credential has three surfaces in the app: the `/teacher` screen
-(`TeacherVerifyScreen`, also reachable standalone when somebody is signed in with
-no roster at all), the start-a-program screen — which shows the invitation form
+(`TeacherVerifyScreen`, which is also the whole landing page for a declared
+teacher who is signed in with no roster — that account never meets the student
+join-code form), the start-a-program screen — which shows the invitation form
 instead of its form until the account is verified — and an entry point in Account
 settings and the account sheet, for the teacher who signed in before they had
-their code.
+their code. The two codes stay two flows: a program join code is only ever
+collected by `/join`, a teacher invitation code only by the teacher screen.
 
 Migration 021 replaced `profiles.clerk_id` with `profiles.auth_user_id` and
 repointed `public.current_profile_id()` at it. That one helper is what every RLS
@@ -203,9 +205,13 @@ one manual step for people who already have attendance history — is in
 No identity helper is executable by `anon`, and an unknown `sub` resolves to NULL,
 so every policy denies rather than guessing.
 
-**Roster gate.** A signed-in account with no `profiles` row lands on the join
-screen (`src/screens/JoinProgramScreen.tsx`, rendered standalone) and picks which
-program to join. The **join code** is the only door, and it is validated
+**Roster gate.** A signed-in account with no roster lands on one of two doors,
+chosen by its signup type: a student — or any account that never declared teacher
+— gets the join screen (`src/screens/JoinProgramScreen.tsx`, rendered standalone)
+and picks which program to join, while a declared teacher who has not verified an
+invitation gets the teacher screen and no join-code field at all
+(`e2e/teacher-onboarding.spec.ts`). `/join` stays a URL any signed-in person may
+open, including a teacher joining somebody else's roster. The **join code** is the only door, and it is validated
 server-side — never in the browser:
 
 ```

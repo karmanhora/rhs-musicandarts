@@ -62,18 +62,6 @@ export function TeacherVerifyScreen({ standalone = false }: { standalone?: boole
           Sign out
         </Button>
       )}
-
-      <p className="type-meta text-center">
-        Teaching, but joining a program somebody else already runs? Use{" "}
-        <button
-          type="button"
-          onClick={() => navigate("/join")}
-          className="font-semibold underline underline-offset-2"
-        >
-          that program&rsquo;s join code
-        </button>{" "}
-        instead — it puts you on their roster without teacher access.
-      </p>
     </div>
   );
 

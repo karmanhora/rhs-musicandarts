@@ -15,16 +15,18 @@ type AuthMode = "sign-in" | "sign-up" | "forgot" | "reset";
  */
 const AUDIENCE_COPY: Record<
   AuthAudience,
-  { kickerUp: string; signUpSub: string; signUpNote: string }
+  { kickerUp: string; signUpSub: string; signUpNote: string; afterConfirm: string }
 > = {
   student: {
     kickerUp: "New student account",
+    afterConfirm: "then enter your program’s join code.",
     signUpSub: "Use the email you want associated with your program.",
     signUpNote:
       "After creating your account, enter your program’s join code. Ask your director if you need one.",
   },
   teacher: {
     kickerUp: "New teacher account",
+    afterConfirm: "then enter the teacher invitation code your school issued you.",
     signUpSub:
       "Use your school email — a teacher invitation code is checked against the address on your account.",
     signUpNote:
@@ -376,7 +378,7 @@ export function AuthScreen({ mode }: { mode: AuthMode }) {
         <p className="type-meta mt-2">
           We sent a confirmation link to{" "}
           <span className="font-semibold text-[var(--cue-ink)]">{email.trim()}</span>. Open it and
-          you&rsquo;re in — then enter your program&rsquo;s join code.
+          you&rsquo;re in — {copy.afterConfirm}
         </p>
         {error ? (
           <div className="mt-4">

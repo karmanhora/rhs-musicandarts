@@ -257,15 +257,37 @@ export function ProgramsProvider({ children }: { children: ReactNode }) {
       wanted: string | null,
       verifiedTeacher: boolean
     ) => {
+      // Resolve the program that was *asked for* first, in two separate steps.
+      //
+      // This used to collapse into one expression —
+      // `memberships.find(…) ?? memberships[0] ?? null` — which meant a request
+      // for a program the person has no roster row in fell straight back to
+      // their first membership, and the `?? memberships[0]` answer was already
+      // truthy, so the administrator branch below never ran. A system
+      // administrator clicking a program they are not on was therefore shown
+      // their own first program again: the switcher closed, the check mark did
+      // not move, and the dashboard never changed.
+      //
+      // A membership row and an administrator's reach are different answers, so
+      // they are decided separately: the roster row wins when there is one (an
+      // administrator keeps their real roles and section in a program they are
+      // on), otherwise an administrator may open the program with no membership
+      // at all — and only when nothing was asked for, or what was asked for is
+      // gone, do we fall back to the first program they can open.
+      const chosenMembership = wanted
+        ? (memberships.find((m) => m.ensemble.id === wanted) ?? null)
+        : null;
+      const chosenAdminProgram =
+        isSystemAdmin && wanted && !chosenMembership
+          ? (everyProgram.find((p) => p.id === wanted) ?? null)
+          : null;
       const membership =
-        memberships.find((m) => m.ensemble.id === wanted) ?? memberships[0] ?? null;
-      // An administrator may open a program they are not on; anybody else only
-      // ever sees the programs their own roster rows point at.
+        chosenMembership ?? (chosenAdminProgram ? null : (memberships[0] ?? null));
       const program =
+        chosenMembership?.ensemble ??
+        chosenAdminProgram ??
         membership?.ensemble ??
-        (isSystemAdmin
-          ? (everyProgram.find((p) => p.id === wanted) ?? everyProgram[0] ?? null)
-          : null);
+        (isSystemAdmin ? (everyProgram[0] ?? null) : null);
 
       if (!program) {
         // Signed in, but on no roster at all: they need a join code.
@@ -293,6 +315,8 @@ export function ProgramsProvider({ children }: { children: ReactNode }) {
 
       // Remember whichever program we settled on, whatever brought us here, so a
       // reload shows the same one (setProgram used to be the only path that did).
+      // Only a program we actually resolved is written: a stale remembered id
+      // must not be re-stored as though it had been opened.
       remember(profile.id, program.id);
 
       const roles = membership?.roles ?? [];
