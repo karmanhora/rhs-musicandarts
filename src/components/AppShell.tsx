@@ -327,7 +327,16 @@ export function AppShell() {
         unreadCount={unread}
         onChanged={refreshUnread}
       />
-      <AccountSheet open={accountOpen} onClose={() => setAccountOpen(false)} />
+      <AccountSheet
+        open={accountOpen}
+        onClose={() => setAccountOpen(false)}
+        /* The account sheet's "Switch program" row used to navigate home, which
+           is not switching anything. It now opens the switcher itself. */
+        onSwitchProgram={() => {
+          setAccountOpen(false);
+          setSwitcherOpen(true);
+        }}
+      />
       <ProgramSwitcher open={switcherOpen} onClose={() => setSwitcherOpen(false)} />
     </div>
   );
@@ -338,7 +347,16 @@ export function AppShell() {
  * including from a phone where the bottom bar has no room for a sixth tab.
  * Role management only appears when the server says the person may see roles.
  */
-function AccountSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
+function AccountSheet({
+  open,
+  onClose,
+  onSwitchProgram,
+}: {
+  open: boolean;
+  onClose: () => void;
+  /** Opens the program switcher — not the dashboard. */
+  onSwitchProgram: () => void;
+}) {
   const app = usePrograms();
   const auth = useAuth();
   const prefs = usePreferences();
@@ -462,12 +480,9 @@ function AccountSheet({ open, onClose }: { open: boolean; onClose: () => void })
             <Row
               icon={<ChevronsUpDown className="h-4 w-4" />}
               title="Switch program"
-              subtitle={`${app.programs.length} programs`}
+              subtitle={`${app.programs.length} programs you can open`}
               trailing={<ChevronRight aria-hidden="true" className="h-4 w-4 text-[var(--cue-subtle)]" />}
-              onClick={() => {
-                onClose();
-                navigate("/");
-              }}
+              onClick={onSwitchProgram}
             />
           ) : null}
         </List>

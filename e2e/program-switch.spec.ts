@@ -71,9 +71,12 @@ test("a system administrator switches to a program they are not on", async ({ pa
 
   await switcher.click();
 
-  // The off-roster program is listed, and its row says why it is reachable.
+  // The off-roster program is listed, and its row says why it is reachable —
+  // administrator access, not a membership role it does not have.
   await expect(page.getByText("Mean Girls Pit", { exact: true })).toBeVisible();
-  await expect(page.getByText("System administrator", { exact: true })).toBeVisible();
+  await expect(
+    page.getByText(/System administrator — not on this roster/)
+  ).toBeVisible();
 
   await page.getByRole("button", { name: /Mean Girls Pit/ }).click();
 
@@ -84,9 +87,11 @@ test("a system administrator switches to a program they are not on", async ({ pa
   );
 
   // …and the program's own capabilities, not a student's view: the dashboard
-  // offers the staff framing because `has_permission()` answers for an
-  // administrator in every program.
-  await expect(page.getByText(/you.re on staff here/)).toBeVisible();
+  // offers the staff actions because `has_permission()` answers for an
+  // administrator in every program — while naming the access as administrator
+  // access rather than claiming a staff place on a roster they are not on.
+  await expect(page.getByText(/as a system administrator/)).toBeVisible();
+  await expect(page.getByRole("button", { name: "Take attendance" })).toBeVisible();
 
   // Switching back is the ordinary roster path and must keep working.
   await page.getByRole("button", { name: /^Switch program/ }).click();

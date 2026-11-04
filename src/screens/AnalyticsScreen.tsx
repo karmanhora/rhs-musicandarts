@@ -320,7 +320,7 @@ export function AnalyticsScreen() {
                   } marks across ${requirements.optional_events ?? 0} optional events`}
                 />
                 <Metric
-                  label="No attendance"
+                  label="Not tracked"
                   value={requirements.excluded_events ?? 0}
                   tone="muted"
                   hint="Excluded from every percentage"
@@ -563,7 +563,7 @@ export function AnalyticsScreen() {
                 <Metric label="Present" value={summary.present ?? 0} tone="present" />
                 <Metric label="Late" value={summary.late ?? 0} tone="late" />
                 <Metric label="Excused" value={summary.excused ?? 0} tone="excused" />
-                <Metric label="Absent" value={summary.absent ?? 0} tone="absent" />
+                <Metric label="Not recorded" value={summary.absent ?? 0} tone="late" />
               </MetricStrip>
             </div>
 
@@ -588,8 +588,10 @@ export function AnalyticsScreen() {
 
             <Card className="p-3">
               <p className="type-meta">
-                Students with no mark count as absent. Staff can still fix a mark from the Attendance
-                screen, and the change shows here immediately.
+                Anyone with no saved mark is counted here as <strong>Not recorded</strong> — the word
+                the reports and the export use, and not the same claim as an explicit absent. Staff
+                can still add a mark from the Attendance screen, and the change shows here
+                immediately.
               </p>
             </Card>
           </div>

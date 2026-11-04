@@ -48,7 +48,7 @@ export function ProgramSwitcher({ open, onClose }: { open: boolean; onClose: () 
             const here = entry.ensemble.id === app.program?.id;
             const team = teamNameOf(entry.parentId);
             const bits = [
-              entry.isMember ? roleLabelOf(entry.roles) : "System administrator",
+              entry.isMember ? roleLabelOf(entry.roles) : "System administrator — not on this roster",
               entry.section,
               team ? `in ${team}` : null,
             ]
@@ -148,8 +148,8 @@ export function ProgramSwitcher({ open, onClose }: { open: boolean; onClose: () 
 
         <p className="type-meta">
           {app.isSystemAdmin
-            ? "As a system administrator you can open any program here, including ones you are not on. Roles, sections and colours still come from the program you pick."
-            : "Roles, sections and colours come from the program you pick, so a director of one program is a student in the next."}
+            ? "As a system administrator you can open any program here, including ones you are not on. Opening one does not join its roster, and its roles, sections and colours still come from the program you pick."
+            : "Roles, sections and colours come from the program you pick, so a director of one program is a student in the next. Joining another program with a code adds you to its roster."}
         </p>
       </div>
     </Sheet>

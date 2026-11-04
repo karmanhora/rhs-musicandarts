@@ -56,7 +56,7 @@ const STATUS_FILTER_OPTIONS: { value: string; label: string }[] = [
   { value: "late", label: "Late" },
   { value: "excused", label: "Excused" },
   { value: "none", label: "No record" },
-  { value: "absent", label: "Absent (stored)" },
+  { value: "absent", label: "Absent (recorded)" },
 ];
 
 const REPORT_STATUS_OPTIONS: { value: string; label: string }[] = [
@@ -65,7 +65,7 @@ const REPORT_STATUS_OPTIONS: { value: string; label: string }[] = [
   { value: "late", label: "Late" },
   { value: "excused", label: "Excused" },
   { value: "not_recorded", label: "Not recorded" },
-  { value: "absent", label: "Absent (stored)" },
+  { value: "absent", label: "Absent (recorded)" },
 ];
 
 /** Local `YYYY-MM-DD` → the ISO instant at the start of that local day. */
@@ -659,7 +659,7 @@ export function RecordsScreen() {
                     <option value="">Any requirement</option>
                     <option value="required">Required</option>
                     <option value="optional">Optional</option>
-                    <option value="none">No attendance</option>
+                    <option value="none">Not tracked</option>
                   </Select>
                 </Field>
                 <Field label="Status">

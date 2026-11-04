@@ -54,7 +54,9 @@ import type {
 } from "../lib/types";
 import { usePrograms } from "../hooks/usePrograms";
 import {
+  ATTENDANCE_REQUIREMENT_HINT,
   ATTENDANCE_REQUIREMENT_LABEL,
+  CHECKIN_MODE_HINT,
   CHECKIN_MODE_LABEL,
   EVENT_TYPES,
   defaultAttendanceRequirement,
@@ -461,7 +463,10 @@ export function CalendarScreen() {
                 Today
               </Button>
             ) : null}
-            {app.isStaff ? (
+            {/* The capability the server checks for an event write — a section
+                leader is staff but cannot manage events, and a control the
+                database refuses is worse than no control. */}
+            {canManageEvents ? (
               <Button
                 size="sm"
                 icon={<Plus className="h-4 w-4" />}
@@ -577,6 +582,8 @@ export function CalendarScreen() {
         </div>
       </div>
 
+      {/* Reading cancelled events is a staff read, not an event write, so this
+          stays available to a section leader even though they cannot edit one. */}
       {app.isStaff ? (
         <div className="flex items-center gap-2">
           <Toggle checked={showArchived} onChange={setShowArchived} label="Show archived events" />
@@ -615,7 +622,7 @@ export function CalendarScreen() {
               icon={<CalendarDays className="h-4 w-4" />}
               title="Nothing on this day"
               body={
-                app.isStaff
+                canManageEvents
                   ? "Add a rehearsal, performance or meeting to the schedule, or pick another day."
                   : "Nothing scheduled for this program — or pick another day."
               }
@@ -756,15 +763,23 @@ export function CalendarScreen() {
             </div>
 
             <dl className="cue-card cue-list overflow-hidden rounded-[var(--radius-panel)] text-sm">
-              <div className="flex items-baseline justify-between gap-3 px-3 py-2.5">
-                <dt className="type-label">Check-in</dt>
-                <dd className="font-medium">{CHECKIN_MODE_LABEL[detail.checkin_mode]}</dd>
+              <div className="px-3 py-2.5">
+                <div className="flex items-baseline justify-between gap-3">
+                  <dt className="type-label">How students check in</dt>
+                  <dd className="font-medium">{CHECKIN_MODE_LABEL[detail.checkin_mode]}</dd>
+                </div>
+                <p className="type-meta mt-1">{CHECKIN_MODE_HINT[detail.checkin_mode]}</p>
               </div>
-              <div className="flex items-baseline justify-between gap-3 px-3 py-2.5">
-                <dt className="type-label">Attendance</dt>
-                <dd className="font-medium">
-                  {ATTENDANCE_REQUIREMENT_LABEL[detail.attendance_requirement]}
-                </dd>
+              <div className="px-3 py-2.5">
+                <div className="flex items-baseline justify-between gap-3">
+                  <dt className="type-label">Attendance</dt>
+                  <dd className="font-medium">
+                    {ATTENDANCE_REQUIREMENT_LABEL[detail.attendance_requirement]}
+                  </dd>
+                </div>
+                <p className="type-meta mt-1">
+                  {ATTENDANCE_REQUIREMENT_HINT[detail.attendance_requirement]}
+                </p>
               </div>
               {detail.event_source === "google_calendar" ? (
                 <div className="flex items-baseline justify-between gap-3 px-3 py-2.5">
@@ -795,7 +810,7 @@ export function CalendarScreen() {
               Add to Google Calendar
             </Button>
 
-            {app.isStaff ? (
+            {canManageEvents ? (
               <div className="space-y-2">
                 {/* Stacked, not a flex row: `Button` is `shrink-0` and `block`
                     makes it `w-full`, so two of them in a row cannot shrink and
@@ -1027,7 +1042,10 @@ export function CalendarScreen() {
               />
             </Field>
 
-            <Field label="How do students check in?">
+            <Field
+              label="How do students check in?"
+              hint={CHECKIN_MODE_HINT[form.checkin_mode]}
+            >
               <SegmentedControl
                 className="flex-wrap"
                 value={form.checkin_mode}
@@ -1049,7 +1067,10 @@ export function CalendarScreen() {
               />
             </Field>
 
-            <Field label="Attendance">
+            <Field
+              label="Does it count toward attendance?"
+              hint={ATTENDANCE_REQUIREMENT_HINT[form.attendance_requirement]}
+            >
               <SegmentedControl
                 value={form.attendance_requirement}
                 onChange={(r) =>
@@ -1074,8 +1095,19 @@ export function CalendarScreen() {
 
             {form.attendance_requirement === "required" && form.checkin_mode === "qr" ? (
               <Alert tone="info">
-                Students scan the code you project from the Check in screen. Their percentage only
-                counts events marked Required.
+                Students scan the code you project from the Check in screen. Only events marked
+                Required go into their percentage.
+              </Alert>
+            ) : null}
+
+            {/* A required event nobody can check in to would quietly mark every
+                student as "Not recorded" — the app's word for a miss. Say so
+                before it is saved rather than after. */}
+            {form.attendance_requirement === "required" && form.checkin_mode === "none" ? (
+              <Alert tone="warn">
+                Nobody can check in and attendance still counts, so every student would end up
+                “Not recorded” — a miss. Choose a check-in method above, or set attendance to
+                “Not tracked”.
               </Alert>
             ) : null}
           </div>

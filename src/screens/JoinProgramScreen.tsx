@@ -13,7 +13,7 @@ import {
 import { joinProgramByCode } from "../lib/rpc";
 import { usePrograms } from "../hooks/usePrograms";
 import { useAuth } from "../hooks/useAuth";
-import { APP_NAME, ORG_NAME, ROLE_LABEL } from "../lib/constants";
+import { APP_NAME, ORG_NAME } from "../lib/constants";
 
 /**
  * Joining a program — the first one and every one after it.
@@ -95,9 +95,9 @@ export function JoinProgramScreen({ standalone = false }: { standalone?: boolean
       ) : null}
 
       <PageHeader
-        kicker={[ROLE_LABEL.student, auth.email].filter(Boolean).join(" · ")}
+        kicker={["Join a program", auth.email].filter(Boolean).join(" · ")}
         title="Join a program"
-        note="Type the code your director gave you. It lands you on that program's roster — its rehearsals, its calendar and your own attendance. There is nothing to pick first."
+        note="Type the code your director gave you. Joining puts you on that program's roster as a student — its rehearsals, its calendar and your own attendance. There is nothing to pick first."
       />
 
       {/* Point teachers at the teacher door — which, since migration 035, needs
@@ -191,7 +191,9 @@ export function JoinProgramScreen({ standalone = false }: { standalone?: boolean
         <ShieldCheck aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-[var(--cue-subtle)]" />
         <p className="type-meta">
           The code is checked on the server, never in this browser. If a director removed you from a
-          program, only a director can put you back.
+          program, only a director can put you back. Joining is the only way onto a roster — a
+          system administrator can open a program without joining it, but that is administrator
+          access, and it never lists them as a member.
         </p>
       </Card>
 

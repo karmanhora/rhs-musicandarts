@@ -44,8 +44,10 @@ import { fmtTime, relativeDay } from "../lib/date";
  * A student asks to miss a future event and reads the answer; a reviewer sees
  * the queue and decides. Both halves are rendered only when the server says the
  * person holds the capability (`absence.request_self` / `absence.review`), and
- * every RPC re-checks it. Approval never writes attendance: the roll is still
- * where an excused mark is made, and this screen says so.
+ * every RPC re-checks it. Approval **does** write attendance: the server marks
+ * the student excused for that event unless a present, late or excused mark is
+ * already saved (migration 20261024225639). Both halves of this screen describe
+ * that one rule, so they share their words.
  */
 
 const STATUS_OPTIONS: { value: string; label: string }[] = [
@@ -319,7 +321,16 @@ export function AbsenceScreen() {
                 <EmptyState
                   icon={<CalendarDays className="h-4 w-4" />}
                   title="Nothing to ask about"
-                  body="Every upcoming event either takes no attendance or already has a request from you. Withdraw a pending one to change it."
+                  body={
+                    (events ?? []).some(
+                      (e) =>
+                        !e.archived &&
+                        e.attendance_requirement !== "none" &&
+                        new Date(e.date).getTime() > Date.now()
+                    )
+                      ? "Every upcoming event either already has a request from you or takes no attendance. Withdraw a pending request to change it."
+                      : "Nothing ahead takes attendance yet. Requests open as soon as a director adds an event that students are marked for."
+                  }
                 />
               </div>
             ) : (
@@ -387,10 +398,10 @@ export function AbsenceScreen() {
                   </Button>
                 </div>
                 <p className="type-meta">
-                  If a reviewer approves, you are marked excused for that event and check-in closes to
-                  you for it. An excused event does not count against your attendance. If staff had
-                  already marked your attendance, that mark stays and the approval is only the
-                  decision.
+                  If a reviewer approves, you are marked excused for that event and it stops counting
+                  against you — and check-in closes to you for it. If staff had already marked you
+                  present or late, that mark stays. A denied request changes nothing; ask your
+                  director if you need it reconsidered.
                 </p>
               </div>
             )}
@@ -511,11 +522,11 @@ export function AbsenceScreen() {
               <div className="cue-card rounded-[var(--radius-panel)]">
                 <EmptyState
                   icon={<Check className="h-4 w-4" />}
-                  title="Nothing here"
+                  title={statusFilter === "pending" ? "No requests waiting" : "No requests match"}
                   body={
                     statusFilter === "pending"
-                      ? "No requests are waiting on you in this view."
-                      : "No requests match these filters."
+                      ? "Every request in this filter has been decided. Approved and denied ones are under their own tabs."
+                      : "Nothing matches this status, event and section. Widen the filters to see more."
                   }
                 />
               </div>
@@ -642,8 +653,9 @@ export function AbsenceScreen() {
             </Field>
 
             <p className="type-meta">
-              Saving this does not change anyone's attendance. Mark the student excused on the roll
-              after the event if they miss it.
+              {decision === "approved"
+                ? "Approving marks this student excused for that event, so it stops counting against them and check-in closes to them. If staff already saved a present, late or excused mark, that mark stands and only the decision is saved."
+                : "Denying changes no attendance. The student sees your response, and can ask again only if you allow it."}
             </p>
           </div>
         ) : null}

@@ -11,6 +11,7 @@ import {
 } from "../lib/queries";
 import { getIsProgramAdmin, getMyPermissions, getTeacherAccessStatus } from "../lib/rpc";
 import { ALL_PERMISSION_CODES, permissionsForRoles } from "../lib/permissions";
+import { ROLE_LABEL } from "../lib/constants";
 import type { PermissionCode } from "../lib/permissions";
 import type { EmbeddedMembership } from "../lib/queries";
 import type { EnsembleRow, Profile, Role, SectionRow } from "../lib/types";
@@ -111,6 +112,16 @@ export interface ProgramsState {
   /** Highest role held in the current program, for the chip beside the name. */
   primaryRole: Role;
   /**
+   * How the current program should describe this person's role.
+   *
+   * A system administrator who is not on this program's roster holds no
+   * membership role at all, so `primaryRole` falls back to `student` — which is
+   * a false claim about their access. This label says what is actually true
+   * ("System administrator"), and every screen that shows a role reads it
+   * instead of indexing `ROLE_LABEL[primaryRole]` directly.
+   */
+  roleLabel: string;
+  /**
    * The signed-in person's effective capabilities in the current program
    * (migration 029). Stored as plain codes so a screen can ask `can("…")`
    * without knowing about roles at all. This is a *rendering* input — the
@@ -172,6 +183,7 @@ const EMPTY: Omit<
   verifiedTeacher: false,
   mayStartProgram: false,
   primaryRole: "student",
+  roleLabel: "Member",
   permissions: [],
   isSystemAdmin: false,
   programs: [],
@@ -382,6 +394,11 @@ export function ProgramsProvider({ children }: { children: ReactNode }) {
         // just what decides whether we show the form or ask for the code.
         mayStartProgram: isSystemAdmin || verifiedTeacher || isDirectorAnywhere,
         primaryRole: primaryRoleOf(roles),
+        roleLabel: membership
+          ? ROLE_LABEL[primaryRoleOf(roles)]
+          : isSystemAdmin
+            ? "System administrator"
+            : "Member",
         // Painted from the roles we already hold, so the right controls exist on
         // the first frame; replaced below by the server's authoritative list.
         // An administrator short-circuits to the whole catalogue because that is

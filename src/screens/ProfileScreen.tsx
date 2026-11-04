@@ -161,7 +161,10 @@ export function ProfileScreen() {
 
   const facts: Array<[string, string]> = [
     ["Program", app.program?.name ?? APP_NAME],
-    ["Section", app.membership?.section?.name || "None yet"],
+    [
+      "Section",
+      app.membership ? app.membership.section?.name || "None yet" : "Not on this roster",
+    ],
     ...(app.membership?.joined_at
       ? ([["On the roster since", fmtDate(new Date(app.membership.joined_at))]] as Array<
           [string, string]
@@ -184,7 +187,7 @@ export function ProfileScreen() {
           kicker={app.program?.short_name || app.program?.name || "Program"}
           title={name}
           note={[
-            ROLE_LABEL[app.primaryRole],
+            app.roleLabel,
             app.membership?.section?.name,
             app.membership?.joined_at
               ? `on the roster since ${fmtDate(new Date(app.membership.joined_at))}`
@@ -215,6 +218,12 @@ export function ProfileScreen() {
               />
               <div className="min-w-0 flex-1">
                 <RoleBadges roles={app.roles} />
+                {app.isSystemAdmin && !app.membership ? (
+                  <p className="type-meta mt-1.5">
+                    System administrator for every program. You are not a member of this one, so it
+                    gives you no section and no membership role — only administrator access.
+                  </p>
+                ) : null}
                 {app.profile?.bio ? (
                   <p className="mt-2 text-sm leading-relaxed text-[var(--cue-muted)]">
                     {app.profile.bio}
@@ -308,7 +317,9 @@ export function ProfileScreen() {
             className="mb-3"
             action={
               <span className="type-meta">
-                from your roles in {app.program?.name ?? "this program"}
+                {app.membership
+                  ? `from your roles in ${app.program?.name ?? "this program"}`
+                  : "as a system administrator"}
               </span>
             }
           >
@@ -323,7 +334,11 @@ export function ProfileScreen() {
           </Card>
         </section>
 
-        {/* --- my section --- */}
+        {/* --- my section ---
+             Hidden for an administrator who is not on this roster: there is no
+             membership to change, and offering the picker would promise a write
+             the server correctly refuses. */}
+        {app.membership ? (
         <section>
           <SectionTitle className="mb-3">My section</SectionTitle>
           <List>
@@ -338,6 +353,7 @@ export function ProfileScreen() {
             />
           </List>
         </section>
+        ) : null}
 
         {/* --- the programs I belong to --- */}
         <section>

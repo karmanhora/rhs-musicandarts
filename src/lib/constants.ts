@@ -95,17 +95,58 @@ export function titleCase(s: string): string {
     .join(" ");
 }
 
+/**
+ * How students can be marked for an event. These words are the whole
+ * vocabulary, so each one names what a person does rather than restating a
+ * database value; the sentence under the choice (CHECKIN_MODE_HINT) says what
+ * follows from it. Check-in and attendance tracking are two different settings:
+ * a QR code says *how* someone is marked, never *whether* it counts.
+ */
 export const CHECKIN_MODE_LABEL: Record<CheckinMode, string> = {
-  qr: "QR code + code",
-  toggle: "Staff marks the roll",
-  both: "QR code + staff marks",
+  qr: "Scan a code",
+  toggle: "Staff mark the roll",
+  both: "Scan or staff",
   none: "No check-in",
+};
+
+/** What each check-in choice actually means, in one sentence. */
+export const CHECKIN_MODE_HINT: Record<CheckinMode, string> = {
+  qr: "A code is shown on the room's screen and students scan it. Staff can still correct anyone afterwards.",
+  toggle: "There is no code. Whoever takes the roll marks each student by hand.",
+  both: "A code is shown and staff can also mark the roll — use this when not everyone has a phone.",
+  none: "Nobody checks in. Use this for a meeting or a trip where attendance is not tracked.",
 };
 
 export const ATTENDANCE_REQUIREMENT_LABEL: Record<AttendanceRequirement, string> = {
   required: "Required",
   optional: "Optional",
-  none: "No attendance",
+  none: "Not tracked",
+};
+
+/**
+ * What counts toward a student's percentage. "Required" is the only setting
+ * that does: an optional event is recorded and reported but never averaged, and
+ * an untracked event is invisible to attendance entirely.
+ */
+export const ATTENDANCE_REQUIREMENT_HINT: Record<AttendanceRequirement, string> = {
+  required:
+    "Counts toward each student's attendance percentage. A student with no mark counts as a miss.",
+  optional: "Still recorded and shown in reports, but left out of the attendance percentage.",
+  none: "No attendance is taken, and the event never appears in a percentage or a report.",
+};
+
+/**
+ * One sentence per meaning, for legends and explainers. The last two are the
+ * pair people most often mix up: an explicit absent mark is a staff decision,
+ * while "Not recorded" means nobody ever saved a mark. They are deliberately
+ * different words everywhere in the app, reports and exports included.
+ */
+export const ATTENDANCE_MEANING: Record<AttendanceStatus | "none", string> = {
+  present: "On time and counted present.",
+  late: "Arrived after the event's late mark.",
+  excused: "A reviewer excused them, so it is left out of their percentage.",
+  absent: "A staff member saved an explicit absent mark.",
+  none: "No mark was saved. Reports say “Not recorded” — that is not the same as a saved absent.",
 };
 
 export const ATTENDANCE_STATUS_LABEL: Record<AttendanceStatus, string> = {
@@ -160,7 +201,7 @@ export const HISTORY_STATUS_LABEL: Record<AttendanceStatus | "none", string> = {
   present: "Present",
   late: "Late",
   excused: "Excused",
-  absent: "Absent (stored)",
+  absent: "Absent (recorded)",
   none: "No record",
 };
 

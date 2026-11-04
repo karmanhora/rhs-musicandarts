@@ -184,7 +184,7 @@ test("a director reads the attendance change history", async ({ page }) => {
   await expect(
     history.locator("span.font-semibold").getByText("Marcus Ellery", { exact: true })
   ).toBeVisible();
-  await expect(history.locator("span").getByText("Absent (stored)")).toBeVisible();
+  await expect(history.locator("span").getByText("Absent (recorded)")).toBeVisible();
   await expect(history.locator("span").getByText("Excused")).toBeVisible();
   await expect(history.getByText(/Staff correction/)).toBeVisible();
   await expect(history.getByText(/Doctor's note handed in after rehearsal/)).toBeVisible();
@@ -280,7 +280,7 @@ test("a student cannot open the records screen at all", async ({ page }) => {
 
 /* -------------------------------------------------------------- absences */
 
-test("a reviewer sees the queue and is told approval is not a mark", async ({ page }) => {
+test("a reviewer sees the queue and is told what approving does", async ({ page }) => {
   await open(page, "/absences");
 
   await expect(page.getByRole("heading", { name: "Absences" })).toBeVisible();
@@ -293,8 +293,10 @@ test("a reviewer sees the queue and is told approval is not a mark", async ({ pa
   const decision = page.getByRole("dialog", { name: /Devon Okafor's request/ });
   await expect(decision).toBeVisible();
   await expect(decision.getByLabel("Response (optional)")).toBeVisible();
+  // Approval does write the roll (migration 20261024225639), so the sheet must
+  // say so — the contradiction this test used to pin is the bug.
   await expect(
-    decision.getByText(/Saving this does not change anyone's attendance/)
+    decision.getByText(/Approving marks this student excused for that event/)
   ).toBeVisible();
 });
 

@@ -42,6 +42,7 @@ import { useNow } from "../hooks/useNow";
 import type { AttendanceRow, AttendanceStatus, EventRow, RosterMember } from "../lib/types";
 import { usePrograms } from "../hooks/usePrograms";
 import {
+  ATTENDANCE_MEANING,
   ATTENDANCE_STATUS_CHIP,
   ATTENDANCE_STATUS_LABEL,
   eventTypeChip,
@@ -457,7 +458,7 @@ export function AttendanceScreen() {
                       Change event
                     </button>
                   ) : null}
-                  {selected.checkin_mode === "qr" ? (
+                  {selected.checkin_mode === "qr" || selected.checkin_mode === "both" ? (
                     <button
                       type="button"
                       onClick={() => navigate(`/checkin?event=${selected.id}`)}
@@ -525,10 +526,14 @@ export function AttendanceScreen() {
                   value={counts.excused}
                   tone={counts.excused ? "excused" : "muted"}
                 />
+                {/* "Not recorded", not "absent" and not "not marked": the export
+                    and the report use that word for a student with no saved mark,
+                    and an explicit absent is a different decision. Gold, because
+                    it is work still to do — not the red an absence carries. */}
                 <Metric
-                  label="Not marked"
+                  label="Not recorded"
                   value={counts.unmarked}
-                  tone={counts.unmarked ? "absent" : "muted"}
+                  tone={counts.unmarked ? "late" : "muted"}
                 />
               </MetricStrip>
 
@@ -777,7 +782,7 @@ export function AttendanceScreen() {
             ? `${editing.section_name || "No section"} · ${
                 byStudent.get(editing.user_id)
                   ? ATTENDANCE_STATUS_LABEL[byStudent.get(editing.user_id)!.status]
-                  : "No mark yet"
+                  : "Not recorded"
               }`
             : undefined
         }
@@ -800,6 +805,10 @@ export function AttendanceScreen() {
               options={STATUS_OPTIONS}
               className="flex-wrap"
             />
+            {/* What the chosen mark means, in the same words the report and the
+                export use — so "Absent" and "Not recorded" cannot be mistaken
+                for each other at the moment the mark is made. */}
+            <p className="type-meta">{ATTENDANCE_MEANING[draftStatus]}</p>
 
             {draftStatus === "excused" ? (
               <Field

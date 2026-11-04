@@ -38,7 +38,6 @@ import {
   ATTENDANCE_REQUIREMENT_LABEL,
   ATTENDANCE_STATUS_CHIP,
   ATTENDANCE_STATUS_LABEL,
-  CHECKIN_MODE_LABEL,
   eventTypeChip,
   eventTypeLabel,
   ROLE_LABEL,
@@ -205,9 +204,11 @@ export function HomeScreen() {
             day: "numeric",
           })}
           note={
-            app.isStaff
-              ? `${firstName} — you're on staff here. Take the roll, or open a code for the room.`
-              : `Hello, ${firstName}. Here's what's next, and where your attendance stands.`
+            app.isSystemAdmin && !app.membership
+              ? `${firstName} — you're viewing ${app.program?.name ?? "this program"} as a system administrator. You are not on its roster, so it gives you no section and no membership role.`
+              : app.isStaff
+                ? `${firstName} — you're on staff here. Take the roll, or open a code for the room.`
+                : `Hello, ${firstName}. Here's what's next, and where your attendance stands.`
           }
           actions={
             app.isStaff ? (
@@ -332,8 +333,7 @@ export function HomeScreen() {
                     </span>
                   ) : nextEvent.checkin_mode === "toggle" ? (
                     <span className="text-[0.8125rem] text-[var(--cue-stage-ink)]/75">
-                      {CHECKIN_MODE_LABEL[nextEvent.checkin_mode]} — your section leader marks this
-                      one.
+                      No code for this one — staff mark the roll during the event.
                     </span>
                   ) : (
                     <button
@@ -555,6 +555,18 @@ export function HomeScreen() {
                     }}
                   />
                 ))}
+                {/* A program only an administrator can reach has no roster row.
+                    Showing it here as "Here" is what stops the list looking as
+                    if the program on screen belongs to somebody else. */}
+                {app.program && !app.memberships.some((m) => m.ensemble.id === app.program?.id) ? (
+                  <Row
+                    title={app.program.name}
+                    subtitle="System administrator · not on this roster"
+                    trailing={
+                      <Badge className="bg-[var(--cue-leaf-soft)] text-[var(--cue-leaf)]">Here</Badge>
+                    }
+                  />
+                ) : null}
               </List>
             </section>
             ) : null}
@@ -579,7 +591,7 @@ export function HomeScreen() {
                       value={app.sections.length || "—"}
                       hint="instruments on the roster"
                     />
-                    <Metric label="Your role" value={ROLE_LABEL[app.primaryRole]} hint="in this program" />
+                    <Metric label="Your role" value={app.roleLabel} hint="in this program" />
                     <Metric
                       label="Your programs"
                       value={app.memberships.length}
