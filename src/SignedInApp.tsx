@@ -194,7 +194,20 @@ function ProgramRoutes() {
             the invitation form and nothing else, because two code boxes on one
             screen is how somebody types the wrong code. `/join` stays reachable
             by URL for a teacher who really is joining somebody elses roster. */}
-        <Route path="/join" element={<JoinProgramScreen standalone />} />
+        {/* A teacher's onboarding has exactly one form. `/join` stays available
+            to a student, and to a teacher who is verified or already on a
+            roster, but an unverified teacher who opens it is sent to the
+            invitation form rather than shown a second code box. */}
+        <Route
+          path="/join"
+          element={
+            auth.accountType === "teacher" && !app.mayStartProgram ? (
+              <Navigate to="/teacher" replace />
+            ) : (
+              <JoinProgramScreen standalone />
+            )
+          }
+        />
         <Route
           path="*"
           element={

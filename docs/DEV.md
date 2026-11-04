@@ -210,8 +210,7 @@ chosen by its signup type: a student — or any account that never declared teac
 — gets the join screen (`src/screens/JoinProgramScreen.tsx`, rendered standalone)
 and picks which program to join, while a declared teacher who has not verified an
 invitation gets the teacher screen and no join-code field at all
-(`e2e/teacher-onboarding.spec.ts`). `/join` stays a URL any signed-in person may
-open, including a teacher joining somebody else's roster. The **join code** is the only door, and it is validated
+(`e2e/teacher-onboarding.spec.ts`).`/join` stays a URL any signed-in person may open, including a teacher who is verified or already on a roster and is joining somebody else's. An **unverified teacher with no roster** is sent from `/join` to the invitation form, so the two codes never share a screen. The **join code** is the only door, and it is validated
 server-side — never in the browser:
 
 ```

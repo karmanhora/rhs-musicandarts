@@ -52,6 +52,22 @@ test("a teacher with no roster sees only the invitation form", async ({ page }) 
   await expect(page.getByText(/Type the code your director gave you/)).toHaveCount(0);
 });
 
+test("a teacher who opens /join with no roster is sent to the invitation form", async ({
+  page,
+}) => {
+  await installMocks(page, true);
+  await serveNoRoster(page);
+
+  await page.goto("/join");
+
+  // The student join code is not part of teacher onboarding, not even by URL:
+  // the two codes must never be on the same screen, where one gets typed into
+  // the other's field.
+  await expect(page).toHaveURL(/\/teacher$/);
+  await expect(page.getByRole("textbox", { name: "Invitation code" })).toBeVisible();
+  await expect(page.getByRole("textbox", { name: "Join code" })).toHaveCount(0);
+});
+
 test("a student with no roster still lands on the join form", async ({ page }) => {
   await installMocks(page, true);
   await serveNoRoster(page);
