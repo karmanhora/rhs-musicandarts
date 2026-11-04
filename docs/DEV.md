@@ -378,7 +378,7 @@ Migration 031 changes shape in two ways —
   reached from the UI.
 - **A program can sit inside a team, and only a system administrator decides
   which.** `ensembles.parent_ensemble_id`
-  ([20261104120000_program_teams.sql](../supabase/migrations/20261104120000_program_teams.sql))
+  ([20261104013553_program_teams.sql](../supabase/migrations/20261104013553_program_teams.sql))
   is a one-level link: RHS Band can hold Jazz Ensemble, Jazz Band and Pit Band,
   and each of those is a full program with its own roster, events, attendance and
   join code. `create_program_in_team()` and `move_program_to_team()` are gated on
