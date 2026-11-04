@@ -157,6 +157,25 @@ export const createProgram = (
 // --- Sections / instruments (director) --------------------------------------
 
 /**
+ * System administrator only: start an empty team — a program that holds
+ * programs. It begins with its own join code and the caller as director;
+ * `createProgramInTeam()` is what puts the first program inside it.
+ */
+export const createTeam = (
+  name: string,
+  opts?: { shortName?: string; instruments?: string[] }
+) => {
+  const instruments = (opts?.instruments ?? [])
+    .map((value) => value.trim())
+    .filter(Boolean);
+  return callRpc("create_team", {
+    p_name: name.trim(),
+    p_short_name: opts?.shortName?.trim() || null,
+    p_instruments: instruments.length ? instruments : null,
+  });
+};
+
+/**
  * System administrator only: create a program inside a team — "Jazz Ensemble"
  * under "RHS Band". The caller becomes its director, exactly as
  * `create_program()` makes them theirs; the server refuses everybody else.

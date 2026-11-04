@@ -381,9 +381,11 @@ Migration 031 changes shape in two ways —
   ([20261104013553_program_teams.sql](../supabase/migrations/20261104013553_program_teams.sql))
   is a one-level link: RHS Band can hold Jazz Ensemble, Jazz Band and Pit Band,
   and each of those is a full program with its own roster, events, attendance and
-  join code. `create_program_in_team()` and `move_program_to_team()` are gated on
-  `is_program_admin()`, so a director cannot create or rearrange programs — the
-  database refuses it, not just the hidden screen. The app's *Programs & teams*
+  join code. `create_team()` starts an empty team, and `create_program_in_team()`
+  / `move_program_to_team()` add to it and rearrange it
+  ([20261104014155_create_team.sql](../supabase/migrations/20261104014155_create_team.sql));
+  all three are gated on `is_program_admin()`, so a director cannot create or
+  rearrange programs — the database refuses it, not just the hidden screen. The app's *Programs & teams*
   screen (`/programs`, behind `system.manage`) is the only surface; the switcher
   reads the same column to indent a team's programs. Deleting a team detaches its
   programs (`on delete set null`); it never deletes them.

@@ -16,7 +16,7 @@ import {
 } from "../components/ui";
 import { usePrograms } from "../hooks/usePrograms";
 import type { SwitchableProgram } from "../hooks/usePrograms";
-import { createProgramInTeam, moveProgramToTeam } from "../lib/rpc";
+import { createProgramInTeam, createTeam, moveProgramToTeam } from "../lib/rpc";
 
 const byName = (a: SwitchableProgram, b: SwitchableProgram) =>
   a.ensemble.name.localeCompare(b.ensemble.name);
@@ -27,17 +27,26 @@ const byName = (a: SwitchableProgram, b: SwitchableProgram) =>
  * A team is a program that holds programs: RHS Band can hold Jazz Ensemble, Jazz
  * Band and Pit Band, each a full program with its own roster, events and join
  * code. The link lives in `ensembles.parent_ensemble_id` (migration
- * 20261104120000) and is one level deep.
+ * 20261104013553) and is one level deep. A team can also be started empty
+ * (`create_team()`), which is what makes the first program in a new subject
+ * possible.
  *
  * Both actions here are administrator-only, and this screen is the client's
- * half of that: `create_program_in_team()` and `move_program_to_team()` refuse
- * anybody without a `program_admins` row, so hiding the route is presentation,
- * not the boundary. A director keeps every right they had inside their own
- * program; none of those rights include rearranging programs.
+ * half of that: `create_team()`, `create_program_in_team()` and
+ * `move_program_to_team()` refuse anybody without a `program_admins` row, so
+ * hiding the route is presentation, not the boundary. A director keeps every
+ * right they had inside their own program; none of those rights include
+ * rearranging programs.
  */
 export function ProgramsScreen() {
   const app = usePrograms();
   const { toast } = useToast();
+
+  const [creatingTeam, setCreatingTeam] = useState(false);
+  const [teamName, setTeamName] = useState("");
+  const [teamInstruments, setTeamInstruments] = useState("");
+  const [teamBusy, setTeamBusy] = useState(false);
+  const [teamError, setTeamError] = useState<string | null>(null);
 
   const [addingTo, setAddingTo] = useState<SwitchableProgram | null>(null);
   const [name, setName] = useState("");
@@ -50,15 +59,21 @@ export function ProgramsScreen() {
   const [moveBusy, setMoveBusy] = useState(false);
   const [moveError, setMoveError] = useState<string | null>(null);
 
-  const teams = useMemo(() => app.programs.filter((entry) => !entry.parentId).sort(byName), [
-    app.programs,
-  ]);
+  /** Every top-level program, read as a team: it can hold programs. */
+  const teams = useMemo(
+    () => app.programs.filter((entry) => !entry.parentId).sort(byName),
+    [app.programs]
+  );
 
   const programsOf = (teamId: string) =>
     app.programs.filter((entry) => entry.parentId === teamId).sort(byName);
 
-  /** Top-level programs that hold nothing — the ones a team could adopt. */
-  const loose = teams.filter((team) => programsOf(team.ensemble.id).length === 0);
+  function openCreateTeam() {
+    setCreatingTeam(true);
+    setTeamName("");
+    setTeamInstruments("");
+    setTeamError(null);
+  }
 
   function openAdd(team: SwitchableProgram) {
     setAddingTo(team);
@@ -71,6 +86,30 @@ export function ProgramsScreen() {
     setMoving(program);
     setMoveTo(program.parentId ?? "");
     setMoveError(null);
+  }
+
+  async function submitTeam() {
+    if (teamName.trim().length < 2) {
+      setTeamError("Give the team a name — at least two letters.");
+      return;
+    }
+
+    setTeamBusy(true);
+    setTeamError(null);
+    const { result, error: rpcError } = await createTeam(teamName, {
+      instruments: teamInstruments.split(",").map((value) => value.trim()).filter(Boolean),
+    });
+
+    if (rpcError || !result?.ok) {
+      setTeamBusy(false);
+      setTeamError(rpcError?.message || result?.message || "Could not create the team.");
+      return;
+    }
+
+    setTeamBusy(false);
+    setCreatingTeam(false);
+    toast.success(result.message ?? "The team was created.");
+    await app.refresh(result.program_id ?? undefined);
   }
 
   async function addProgram() {
@@ -125,13 +164,19 @@ export function ProgramsScreen() {
         title="Programs & teams"
         kicker="System administration"
         note="A team holds programs — Jazz Ensemble, Jazz Band and Pit Band inside RHS Band. Each program keeps its own roster, events, attendance and join code, and you can move one between teams at any time."
+        actions={
+          <Button icon={<Plus className="h-4 w-4" />} onClick={openCreateTeam}>
+            Create team
+          </Button>
+        }
       />
 
-      {teams.length === 0 ? (
+      {app.programs.length === 0 ? (
         <EmptyState
           icon={<Layers className="h-6 w-6" />}
-          title="No programs to organize yet"
-          body="Once a program exists it appears here, and you can put others inside it."
+          title="No programs yet"
+          body="Start a team, then add the programs that belong inside it."
+          action={<Button onClick={openCreateTeam}>Create team</Button>}
         />
       ) : null}
 
@@ -163,33 +208,65 @@ export function ProgramsScreen() {
                 subtitle="It gets its own roster, events and join code"
                 onClick={() => openAdd(team)}
               />
+
+              {/* A team with nothing in it can still be moved into another one;
+                  once it holds programs the server refuses that. */}
+              {children.length === 0 ? (
+                <Row
+                  title={`Move ${team.ensemble.name} into a team`}
+                  subtitle="It holds no programs of its own"
+                  trailing={
+                    <ChevronRight
+                      aria-hidden="true"
+                      className="h-4 w-4 shrink-0 text-[var(--cue-subtle)]"
+                    />
+                  }
+                  onClick={() => openMove(team)}
+                />
+              ) : null}
             </List>
           </section>
         );
       })}
 
-      {loose.length > 0 ? (
-        <section className="mt-8">
-          <SectionTitle className="mb-3">Not in a team</SectionTitle>
-          <List>
-            {loose.map((program) => (
-              <Row
-                key={program.id}
-                icon={<Layers className="h-4 w-4" />}
-                title={program.ensemble.name}
-                subtitle="On its own — tap to put it inside a team"
-                trailing={
-                  <ChevronRight
-                    aria-hidden="true"
-                    className="h-4 w-4 shrink-0 text-[var(--cue-subtle)]"
-                  />
-                }
-                onClick={() => openMove(program)}
-              />
-            ))}
-          </List>
-        </section>
-      ) : null}
+      <Sheet
+        open={creatingTeam}
+        onClose={() => setCreatingTeam(false)}
+        title="Create a team"
+        description="A team holds programs, like RHS Band holding Jazz Ensemble"
+        footer={
+          <Button block loading={teamBusy} onClick={() => void submitTeam()}>
+            Create team
+          </Button>
+        }
+      >
+        <div className="space-y-4">
+          {teamError ? <Alert tone="error">{teamError}</Alert> : null}
+          <Field label="Team name" hint="For example: RHS Band, Orchestra, Drama">
+            <Input
+              value={teamName}
+              onChange={(event) => setTeamName(event.target.value)}
+              placeholder="RHS Band"
+              autoComplete="off"
+            />
+          </Field>
+          <Field
+            label="Sections (optional)"
+            hint="Comma separated — you can change these later, and each program can have its own."
+          >
+            <Input
+              value={teamInstruments}
+              onChange={(event) => setTeamInstruments(event.target.value)}
+              placeholder="Trumpet, Saxophone, Rhythm"
+              autoComplete="off"
+            />
+          </Field>
+          <p className="type-meta">
+            The team starts empty and closed, with its own join code, and you become its director.
+            Add its programs next.
+          </p>
+        </div>
+      </Sheet>
 
       <Sheet
         open={addingTo !== null}
