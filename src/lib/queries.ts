@@ -59,7 +59,7 @@ export async function fetchMyMemberships(userId: string): Promise<EmbeddedMember
     .from("memberships")
     .select(
       "id,user_id,ensemble_id,section_id,roles,active,joined_at,email_upcoming_events," +
-        "ensemble:ensembles(id,slug,name,short_name,theme_color,logo_url,active,created_at)," +
+        "ensemble:ensembles(id,slug,name,short_name,theme_color,logo_url,active,parent_ensemble_id,created_at)," +
         "section:sections(id,name,sort_order)"
     )
     .eq("user_id", userId)
@@ -76,7 +76,7 @@ export async function fetchMyMemberships(userId: string): Promise<EmbeddedMember
 export async function fetchActivePrograms(): Promise<EnsembleRow[]> {
   const { data } = await supabase
     .from("ensembles")
-    .select("id,slug,name,short_name,theme_color,logo_url,active,created_at")
+    .select("id,slug,name,short_name,theme_color,logo_url,active,parent_ensemble_id,created_at")
     .eq("active", true)
     .order("name");
   return (data ?? []) as unknown as EnsembleRow[];

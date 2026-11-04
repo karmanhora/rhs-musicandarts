@@ -63,6 +63,11 @@ const InvitationsScreen = lazy(() =>
     default: module.InvitationsScreen,
   }))
 );
+const ProgramsScreen = lazy(() =>
+  import("./screens/ProgramsScreen").then((module) => ({
+    default: module.ProgramsScreen,
+  }))
+);
 const SetupScreen = lazy(() =>
   import("./screens/SetupScreen").then((module) => ({ default: module.SetupScreen }))
 );
@@ -303,6 +308,17 @@ function ProgramRoutes() {
           element={
             <PermissionGate permission="system.manage">
               <InvitationsScreen />
+            </PermissionGate>
+          }
+        />
+        {/* Organizing programs into teams is system administration too: the RPCs
+            behind it (`create_program_in_team`, `move_program_to_team`) refuse
+            anybody without a `program_admins` row. */}
+        <Route
+          path="/programs"
+          element={
+            <PermissionGate permission="system.manage">
+              <ProgramsScreen />
             </PermissionGate>
           }
         />

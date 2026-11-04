@@ -50,6 +50,12 @@ export interface SwitchableProgram {
   roles: Role[];
   section: string | null;
   isMember: boolean;
+  /**
+   * The team this program sits inside (another program), or null at the top
+   * level. The switcher indents these rows under their team; nothing about the
+   * program's own roster, roles or sections depends on it.
+   */
+  parentId: string | null;
 }
 
 export type ProgramsStatus = "loading" | "ready" | "no-roster" | "error";
@@ -206,6 +212,28 @@ function isStaffRole(roles: Role[]): boolean {
 }
 
 /**
+ * The switcher's reading order: each team, then the programs inside it.
+ *
+ * A program whose team is not in the list (archived, or a program this person
+ * cannot open) is shown at the top level rather than disappearing from the
+ * switcher, which is the one answer that would look like a lost program.
+ */
+function orderForSwitcher(rows: SwitchableProgram[]): SwitchableProgram[] {
+  const byName = (a: SwitchableProgram, b: SwitchableProgram) =>
+    a.ensemble.name.localeCompare(b.ensemble.name);
+  const present = new Set(rows.map((row) => row.ensemble.id));
+  const tops = rows
+    .filter((row) => !row.parentId || !present.has(row.parentId))
+    .sort(byName);
+  const out: SwitchableProgram[] = [];
+  for (const top of tops) {
+    out.push(top);
+    out.push(...rows.filter((row) => row.parentId === top.ensemble.id).sort(byName));
+  }
+  return out;
+}
+
+/**
  * The switcher's rows: this person's rosters first, then any program only a
  * system administrator can reach. A program they *are* on keeps its real roles
  * and section, so the administrator view never hides a directorship.
@@ -224,13 +252,21 @@ function switchablePrograms(
       roles: m.roles ?? [],
       section: m.section?.name ?? null,
       isMember: true,
+      parentId: m.ensemble.parent_ensemble_id ?? null,
     });
   }
   for (const program of everyProgram) {
     if (seen.has(program.id)) continue;
-    out.push({ id: program.id, ensemble: program, roles: [], section: null, isMember: false });
+    out.push({
+      id: program.id,
+      ensemble: program,
+      roles: [],
+      section: null,
+      isMember: false,
+      parentId: program.parent_ensemble_id ?? null,
+    });
   }
-  return out;
+  return orderForSwitcher(out);
 }
 
 export function ProgramsProvider({ children }: { children: ReactNode }) {

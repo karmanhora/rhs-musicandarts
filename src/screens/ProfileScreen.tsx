@@ -402,6 +402,20 @@ export function ProfileScreen() {
                 onClick={() => navigate("/new-program")}
               />
             ) : null}
+            {app.isSystemAdmin ? (
+              <Row
+                icon={<ShieldCheck className="h-4 w-4" />}
+                title="Programs & teams"
+                subtitle="Put a program inside a team, or move one between teams"
+                trailing={
+                  <ChevronRight
+                    aria-hidden="true"
+                    className="h-4 w-4 shrink-0 text-[var(--cue-subtle)]"
+                  />
+                }
+                onClick={() => navigate("/programs")}
+              />
+            ) : null}
           </List>
         </section>
 

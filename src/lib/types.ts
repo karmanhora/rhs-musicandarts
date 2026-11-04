@@ -137,6 +137,8 @@ export interface EnsembleRow {
   theme_color: string;
   logo_url: string;
   active: boolean;
+  /** The team this program sits inside, or null when it is top-level. */
+  parent_ensemble_id: string | null;
   created_at: string;
 }
 

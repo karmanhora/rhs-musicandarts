@@ -156,6 +156,34 @@ export const createProgram = (
 
 // --- Sections / instruments (director) --------------------------------------
 
+/**
+ * System administrator only: create a program inside a team — "Jazz Ensemble"
+ * under "RHS Band". The caller becomes its director, exactly as
+ * `create_program()` makes them theirs; the server refuses everybody else.
+ */
+export const createProgramInTeam = (
+  parentId: string,
+  name: string,
+  opts?: { shortName?: string; instruments?: string[] }
+) => {
+  const instruments = (opts?.instruments ?? [])
+    .map((value) => value.trim())
+    .filter(Boolean);
+  return callRpc("create_program_in_team", {
+    p_parent: parentId,
+    p_name: name.trim(),
+    p_short_name: opts?.shortName?.trim() || null,
+    p_instruments: instruments.length ? instruments : null,
+  });
+};
+
+/**
+ * System administrator only: put a program in a team, or take it out when
+ * `parentId` is null. Memberships, events and attendance are untouched.
+ */
+export const moveProgramToTeam = (programId: string, parentId: string | null) =>
+  callRpc("move_program_to_team", { p_program: programId, p_parent: parentId });
+
 /** Director-only: add one instrument/section to the program. */
 export const addProgramSection = (programId: string, name: string) =>
   callRpc("add_program_section", { p_ensemble: programId, p_name: name.trim() });
