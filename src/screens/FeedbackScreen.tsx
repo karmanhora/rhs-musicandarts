@@ -145,8 +145,8 @@ export function FeedbackScreen() {
           title="Thank you"
           note="Your message is with the site owner."
         />
-        <div className="feedback-sheet feedback-sheet--success mt-6 p-6 sm:p-8">
-          <span className="cue-status-pop flex h-12 w-12 items-center justify-center rounded-full border-2 border-[var(--cue-ink)] bg-[var(--cue-panel)] text-[var(--cue-leaf)]">
+        <div className="cue-card mt-6 p-6 sm:p-8">
+          <span className="cue-status-pop flex h-12 w-12 items-center justify-center rounded-full bg-[var(--cue-leaf-soft)] text-[var(--cue-leaf)]">
             <CheckCircle2 aria-hidden="true" className="h-6 w-6" />
           </span>
           <h2 className="type-heading mt-4">We&rsquo;ve got it.</h2>
@@ -180,7 +180,7 @@ export function FeedbackScreen() {
         <form
           onSubmit={(event) => void handleSubmit(event)}
           noValidate
-          className="feedback-sheet p-4 sm:p-6"
+          className="cue-card mx-auto w-full rounded-[var(--radius-panel)] p-4 sm:p-6"
         >
           {submitError ? (
             <Alert tone="error" className="mb-5">
@@ -206,8 +206,10 @@ export function FeedbackScreen() {
                       setErrors((prev) => ({ ...prev, category: undefined }));
                     }}
                     className={cn(
-                      "feedback-choice motion-press flex min-h-12 items-center gap-2 px-3 py-2.5 text-left",
-                      active ? "text-[var(--cue-ink)]" : "text-[var(--cue-muted)]"
+                      "motion-press flex min-h-12 items-center gap-2 rounded-[var(--radius-control)] border px-3 py-2.5 text-left",
+                      active
+                        ? "border-[var(--cue-leaf)] bg-[var(--cue-leaf-soft)] text-[var(--cue-ink)]"
+                        : "border-[var(--cue-line)] bg-[var(--cue-panel)] text-[var(--cue-muted)] hover:bg-[var(--cue-raised)]"
                     )}
                   >
                     <Icon
@@ -259,7 +261,7 @@ export function FeedbackScreen() {
                 maxLength={MAX_MESSAGE}
                 rows={6}
                 placeholder="For example: on the Calendar page, tapping an event shows the wrong date on my phone."
-                className="feedback-control min-h-36 resize-y"
+                className="min-h-36 resize-y"
               />
             </Field>
             <p
@@ -284,7 +286,6 @@ export function FeedbackScreen() {
                 maxLength={MAX_AFFECTED}
                 placeholder="Check in"
                 autoComplete="off"
-                className="feedback-control"
               />
             </Field>
 
@@ -305,7 +306,6 @@ export function FeedbackScreen() {
                 maxLength={254}
                 placeholder="you@example.com"
                 autoComplete="email"
-                className="feedback-control"
               />
             </Field>
           </div>
@@ -334,7 +334,7 @@ export function FeedbackScreen() {
               size="lg"
               loading={submitting}
               icon={<Send className="h-4 w-4" />}
-              className="feedback-submit w-full sm:w-auto"
+              className="w-full sm:w-auto"
             >
               Send feedback
             </Button>
@@ -347,10 +347,10 @@ export function FeedbackScreen() {
 
         <aside
           aria-label="What happens next"
-          className="mt-6 border border-[var(--cue-line)] bg-[var(--cue-panel)] p-4 shadow-[3px_3px_0_var(--cue-gold)] sm:p-5"
+          className="cue-card mt-6 space-y-3 rounded-[var(--radius-panel)] p-4 sm:p-5"
         >
           <SectionTitle>What happens next</SectionTitle>
-          <ul className="mt-3 grid gap-3 sm:grid-cols-3">
+          <ul className="grid gap-3 sm:grid-cols-3">
             {[
               "The site owner reads every message. It is not posted anywhere, and it does not go to your director.",
               "Your contact email is required so the owner can reply. It is never shown to other students, teachers or program administrators.",
