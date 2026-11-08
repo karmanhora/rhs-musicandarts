@@ -99,6 +99,42 @@ export async function fetchArchivedPrograms(): Promise<EnsembleRow[]> {
   return (data ?? []) as unknown as EnsembleRow[];
 }
 
+export interface ProgramArchiveImpact {
+  activeMembers: number;
+  upcomingEvents: number;
+}
+
+/**
+ * What an administrator is about to archive: the people still on the roster and
+ * the events still ahead. RLS gives a program administrator these rows; a
+ * failure throws so the confirmation cannot silently omit the warning.
+ */
+export async function fetchProgramArchiveImpact(
+  programId: string
+): Promise<ProgramArchiveImpact> {
+  const [members, events] = await Promise.all([
+    supabase
+      .from("memberships")
+      .select("id", { count: "exact", head: true })
+      .eq("ensemble_id", programId)
+      .eq("active", true),
+    supabase
+      .from("events")
+      .select("id", { count: "exact", head: true })
+      .eq("ensemble_id", programId)
+      .eq("archived", false)
+      .gte("date", new Date().toISOString()),
+  ]);
+
+  if (members.error) throw new Error(members.error.message);
+  if (events.error) throw new Error(events.error.message);
+
+  return {
+    activeMembers: members.count ?? 0,
+    upcomingEvents: events.count ?? 0,
+  };
+}
+
 /** Every active section. Readable by any signed-in account; only an admin writes. */
 export async function fetchProgramGroups(): Promise<ProgramGroupRow[]> {
   const { data } = await supabase

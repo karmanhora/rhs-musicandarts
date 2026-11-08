@@ -1219,6 +1219,7 @@ export function ConfirmSheet({
   open,
   title,
   body,
+  warning,
   confirmLabel = "Confirm",
   tone = "danger",
   loading,
@@ -1228,6 +1229,8 @@ export function ConfirmSheet({
   open: boolean;
   title: string;
   body: string;
+  /** An extra consequence to see before confirming, such as affected records. */
+  warning?: ReactNode;
   confirmLabel?: string;
   tone?: Variant;
   loading?: boolean;
@@ -1250,6 +1253,7 @@ export function ConfirmSheet({
         </>
       }
     >
+      {warning ? <div className="mb-3">{warning}</div> : null}
       <p className="text-sm text-[var(--cue-muted)]">{body}</p>
     </Sheet>
   );

@@ -24,10 +24,27 @@ import {
   moveProgramToGroup,
   setProgramActive,
 } from "../lib/rpc";
-import { fetchArchivedPrograms } from "../lib/queries";
+import { fetchArchivedPrograms, fetchProgramArchiveImpact } from "../lib/queries";
+import type { ProgramArchiveImpact } from "../lib/queries";
 
 const byName = (a: SwitchableProgram, b: SwitchableProgram) =>
   a.ensemble.name.localeCompare(b.ensemble.name);
+
+function archiveImpactWarning(impact: ProgramArchiveImpact): string | null {
+  const parts: string[] = [];
+  if (impact.activeMembers > 0) {
+    parts.push(
+      `${impact.activeMembers} active member${impact.activeMembers === 1 ? "" : "s"}`
+    );
+  }
+  if (impact.upcomingEvents > 0) {
+    parts.push(
+      `${impact.upcomingEvents} upcoming event${impact.upcomingEvents === 1 ? "" : "s"}`
+    );
+  }
+  if (parts.length === 0) return null;
+  return `This program still has ${parts.join(" and ")}. Archiving keeps all rosters, events and attendance, but the program will no longer be active.`;
+}
 
 /**
  * Programs and sections — the system administrator's organizing screen.
@@ -79,8 +96,10 @@ export function ProgramsScreen() {
     id: string;
     name: string;
     active: boolean;
+    impact: ProgramArchiveImpact | null;
   } | null>(null);
   const [statusBusy, setStatusBusy] = useState(false);
+  const [impactBusy, setImpactBusy] = useState(false);
 
   const loadArchived = useCallback(async () => {
     setArchivedError(null);
@@ -102,6 +121,8 @@ export function ProgramsScreen() {
   const ungrouped = app.programs
     .filter((entry) => !entry.groupId || !groupIds.has(entry.groupId))
     .sort(byName);
+  const archiveWarning =
+    confirming?.active && confirming.impact ? archiveImpactWarning(confirming.impact) : null;
 
   function openCreateGroup() {
     setCreatingGroup(true);
@@ -191,6 +212,31 @@ export function ProgramsScreen() {
     setMoving(null);
     toast.success(result.message ?? "The program was moved.");
     await app.refresh();
+  }
+
+  async function requestArchive() {
+    if (!moving) return;
+    const target = moving;
+    setImpactBusy(true);
+    setMoveError(null);
+    try {
+      const impact = await fetchProgramArchiveImpact(target.ensemble.id);
+      setConfirming({
+        id: target.ensemble.id,
+        name: target.ensemble.name,
+        active: true,
+        impact,
+      });
+      setMoving(null);
+    } catch (error) {
+      setMoveError(
+        error instanceof Error
+          ? error.message
+          : "Could not check this program's members and events. Nothing was archived."
+      );
+    } finally {
+      setImpactBusy(false);
+    }
   }
 
   async function updateProgramActive() {
@@ -307,7 +353,12 @@ export function ProgramsScreen() {
                     />
                   }
                   onClick={() =>
-                    setConfirming({ id: program.id, name: program.name, active: false })
+                    setConfirming({
+                      id: program.id,
+                      name: program.name,
+                      active: false,
+                      impact: null,
+                    })
                   }
                 />
               ))}
@@ -396,7 +447,12 @@ export function ProgramsScreen() {
         title="Manage program"
         description={moving?.ensemble.name}
         footer={
-          <Button block loading={moveBusy} onClick={() => void moveProgram()}>
+          <Button
+            block
+            loading={moveBusy}
+            disabled={impactBusy}
+            onClick={() => void moveProgram()}
+          >
             Save
           </Button>
         }
@@ -424,15 +480,9 @@ export function ProgramsScreen() {
               variant="danger"
               block
               icon={<Archive className="h-4 w-4" />}
-              onClick={() => {
-                if (!moving) return;
-                setConfirming({
-                  id: moving.ensemble.id,
-                  name: moving.ensemble.name,
-                  active: true,
-                });
-                setMoving(null);
-              }}
+              loading={impactBusy}
+              disabled={moveBusy}
+              onClick={() => void requestArchive()}
             >
               Delete program
             </Button>
@@ -455,6 +505,7 @@ export function ProgramsScreen() {
             ? "It will disappear from the active program list and new members cannot join. Its roster, events and attendance history are kept, and you can restore it later."
             : "It will become active and available to join again. Existing members and history are unchanged."
         }
+        warning={archiveWarning ? <Alert tone="warn">{archiveWarning}</Alert> : undefined}
         confirmLabel={confirming?.active ? "Archive program" : "Restore program"}
         tone={confirming?.active ? "danger" : "primary"}
         loading={statusBusy}
