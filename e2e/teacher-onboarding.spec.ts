@@ -53,7 +53,8 @@ test("a teacher with no roster sees only the invitation form", async ({ page }) 
   await expect(page.getByRole("textbox", { name: "Invitation code" })).toBeVisible();
 
   // The student door is not part of teacher onboarding: no join-code field, no
-  // "join a program" heading, none of the director's-code copy.
+  // section picker, no "join a program" heading, none of the director's-code copy.
+  await expect(page.getByRole("combobox", { name: "Section" })).toHaveCount(0);
   await expect(page.getByRole("textbox", { name: "Join code" })).toHaveCount(0);
   await expect(page.getByText("Join a program", { exact: true })).toHaveCount(0);
   await expect(page.getByText(/Type the code your director gave you/)).toHaveCount(0);
@@ -88,6 +89,8 @@ test("a verified teacher with no roster lands on starting a program, not joining
   // do is name their program. The student join form must not reappear.
   await expect(page).toHaveURL(/\/new-program$/);
   await expect(page.getByText("Start your own program", { exact: true })).toBeVisible();
+  await expect(page.getByRole("combobox", { name: "Section" })).toBeVisible();
+  await expect(page.getByRole("option", { name: "RHS Music" })).toBeAttached();
   await expect(page.getByRole("textbox", { name: "Program name" })).toBeVisible();
   await expect(page.getByRole("textbox", { name: "Join code" })).toHaveCount(0);
   await expect(page.getByText("Join a program", { exact: true })).toHaveCount(0);

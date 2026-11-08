@@ -1,10 +1,19 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { KeyRound, LogOut, ShieldCheck } from "lucide-react";
-import { Alert, Button, Card, Field, Input, PageHeader, useToast } from "../components/ui";
+import { KeyRound, Layers, LogOut, ShieldCheck } from "lucide-react";
+import {
+  Alert,
+  Button,
+  Card,
+  Field,
+  Input,
+  PageHeader,
+  Select,
+  useToast,
+} from "../components/ui";
 import { InstrumentPicker } from "../components/InstrumentPicker";
 import { TeacherVerification } from "../components/TeacherVerification";
-import { createProgram } from "../lib/rpc";
+import { createProgramInGroup } from "../lib/rpc";
 import { usePrograms } from "../hooks/usePrograms";
 import { useAuth } from "../hooks/useAuth";
 import { APP_NAME, ORG_NAME } from "../lib/constants";
@@ -12,23 +21,22 @@ import { APP_NAME, ORG_NAME } from "../lib/constants";
 /**
  * Starting your own program — the teacher-only way to create a new roster.
  *
- * Joining somebody else's program needs their join code, so the first teacher in
- * a subject had nobody to ask and no way to use the app at all. This is the door
- * that does not need anybody: name a program, and `create_program()` makes the
- * caller its director. A system administrator is the exception — they keep every
- * capability and are not added to the new roster (migration 20261108032109). The
- * roster, attendance and live check-in tools are ready the moment it exists, and
- * it starts **closed** — with its own join code for the director to hand out.
+ * A program belongs to a section (RHS Band, RHS Choir, RHS Drama, RHS
+ * Orchestra). The section is an organizing row; the program is what the teacher
+ * runs, with its own roster, events, attendance and join code. The teacher
+ * picks the section here and `create_program_in_group()` makes the caller its
+ * director. A system administrator is the exception — they keep every capability
+ * and are not added to the new roster (migration 20261108032109).
  *
  * Like the join screen, this is used twice: standalone (no app bar, no bottom
  * nav) when somebody is signed in with no roster at all, and as the
  * `/new-program` route inside the shell, reached from the join screen, Profile
  * and the program switcher.
  *
- * The name is all this screen collects that the database does not already know.
- * There is deliberately nothing here to pick *which* program — the RPC can only
- * ever create a new one, which is what keeps "start a program" from becoming a
- * way to promote yourself into an existing roster.
+ * The name and section are all this screen collects that the database does not
+ * already know. There is deliberately nothing here to pick an existing program —
+ * the RPC can only ever create a new one, which keeps "start a program" from
+ * becoming a way to promote yourself into somebody else's roster.
  *
  * Since migration 035 the server also requires a **redeemed invitation** before
  * it will create anything, so a declared-but-unverified teacher who lands here
@@ -42,6 +50,9 @@ export function NewProgramScreen({ standalone = false }: { standalone?: boolean 
   const { toast } = useToast();
   const navigate = useNavigate();
 
+  const groups = app.programGroups.filter((group) => group.active);
+
+  const [groupId, setGroupId] = useState("");
   const [name, setName] = useState("");
   const [shortName, setShortName] = useState("");
   const [instruments, setInstruments] = useState<string[]>([]);
@@ -49,11 +60,23 @@ export function NewProgramScreen({ standalone = false }: { standalone?: boolean 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  /** One section is the common case; pick it so the form is one field shorter. */
+  useEffect(() => {
+    if (!groupId && groups.length === 1) setGroupId(groups[0].id);
+  }, [groupId, groups]);
+
   /** No profile yet? This call creates it, so it needs a name to store. */
   const needsName = !app.profile;
-  const canSubmit = name.trim().length >= 2 && (!needsName || yourName.trim().length > 0);
+  const canSubmit =
+    name.trim().length >= 2 &&
+    groupId.length > 0 &&
+    (!needsName || yourName.trim().length > 0);
 
   async function submit() {
+    if (!groupId) {
+      setError("Choose the section this program belongs to.");
+      return;
+    }
     if (name.trim().length < 2) {
       setError("Give your program a name — at least two letters.");
       return;
@@ -65,7 +88,7 @@ export function NewProgramScreen({ standalone = false }: { standalone?: boolean 
 
     setBusy(true);
     setError(null);
-    const { result, error: rpcError } = await createProgram(name, {
+    const { result, error: rpcError } = await createProgramInGroup(groupId, name, {
       shortName,
       displayName: yourName,
       instruments,
@@ -110,15 +133,40 @@ export function NewProgramScreen({ standalone = false }: { standalone?: boolean 
           needsVerification
             ? "Starting a program needs verified teacher access. Enter the invitation code your school issued you, and this form opens right up."
             : app.isSystemAdmin
-              ? "Name it and list its instruments. You keep full access as a system administrator, without joining its roster. The roster, attendance and live check-in tools are ready as soon as it exists."
-              : "Name it, list its instruments, and you're its director. The roster, attendance and live check-in tools are ready as soon as it exists."
+              ? "Choose its section, name it, and list its instruments. You keep full access as a system administrator, without joining its roster."
+              : "Choose its section, name it, and list its instruments. You're its director, and the roster, attendance and live check-in tools are ready as soon as it exists."
         }
       />
 
       {needsVerification ? (
         <TeacherVerification showIntroCards={false} />
+      ) : groups.length === 0 ? (
+        <Card className="flex items-start gap-3">
+          <Layers aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-[var(--cue-gold)]" />
+          <div className="min-w-0">
+            <p className="type-heading">No sections yet</p>
+            <p className="type-meta mt-1">
+              A system administrator creates the sections first — RHS Band, RHS Choir, RHS Drama,
+              RHS Orchestra. Once yours exists, you can start a program inside it.
+            </p>
+          </div>
+        </Card>
       ) : (
         <>
+          <Field
+            label="Section"
+            hint="Which part of the music program runs this? RHS Band, RHS Choir, RHS Drama, RHS Orchestra."
+          >
+            <Select value={groupId} onChange={(event) => setGroupId(event.target.value)}>
+              <option value="">Choose a section</option>
+              {groups.map((group) => (
+                <option key={group.id} value={group.id}>
+                  {group.name}
+                </option>
+              ))}
+            </Select>
+          </Field>
+
           <Field label="Program name" hint="What everybody will call it — you can be specific.">
             <Input
               value={name}
@@ -173,7 +221,7 @@ export function NewProgramScreen({ standalone = false }: { standalone?: boolean 
         </Button>
       ) : null}
 
-      {needsVerification ? null : (
+      {needsVerification || groups.length === 0 ? null : (
         <Card className="flex items-start gap-3">
           <KeyRound aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-[var(--cue-gold)]" />
           <p className="text-sm text-[var(--cue-muted)]">
@@ -203,8 +251,9 @@ export function NewProgramScreen({ standalone = false }: { standalone?: boolean 
         <p className="type-label mt-3 text-[var(--cue-gold-on-brand)]">{ORG_NAME}</p>
         <p className="type-title mt-1.5">{APP_NAME}</p>
         <p className="mt-1 max-w-md text-sm text-[var(--cue-brand-ink)]/80">
-          You&rsquo;re signed in. Verified teachers name a program and become its director straight
-          away — if you haven&rsquo;t entered your invitation code yet, you can do it here.
+          You&rsquo;re signed in. Verified teachers choose a section, name a program and become its
+          director straight away — if you haven&rsquo;t entered your invitation code yet, you can do
+          it here.
         </p>
       </div>
 

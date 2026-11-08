@@ -373,8 +373,8 @@ function ProgramRoutes() {
             </PermissionGate>
           }
         />
-        {/* Organizing programs into teams is system administration too: the RPCs
-            behind it (`create_program_in_team`, `move_program_to_team`) refuse
+        {/* Organizing programs into sections is system administration too: the
+            RPCs behind it (`create_program_group`, `move_program_to_group`) refuse
             anybody without a `program_admins` row. */}
         <Route
           path="/programs"

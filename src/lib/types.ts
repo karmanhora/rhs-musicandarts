@@ -137,8 +137,18 @@ export interface EnsembleRow {
   theme_color: string;
   logo_url: string;
   active: boolean;
-  /** The team this program sits inside, or null when it is top-level. */
-  parent_ensemble_id: string | null;
+  /** The section this program belongs to, or null for an unplaced legacy row. */
+  program_group_id: string | null;
+  created_at: string;
+}
+
+/** A section of the music program (RHS Band, RHS Choir …). Holds programs. */
+export interface ProgramGroupRow {
+  id: string;
+  name: string;
+  short_name: string;
+  sort_order: number;
+  active: boolean;
   created_at: string;
 }
 
@@ -540,6 +550,10 @@ export interface RpcResult {
   role_name?: string;
   /** `create_program()`: how many sections its instruments produced. */
   section_count?: number;
+  /** `create_program_group()` / `create_program_in_group()`: the section row. */
+  group_id?: string;
+  /** `create_program_in_group()`: the section's display name. */
+  group_name?: string;
   /** `add_program_section()` / `rename_program_section()`: the written section. */
   section_id?: string;
   /** `add_program_section()` / `rename_program_section()`: its name. */

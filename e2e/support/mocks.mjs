@@ -20,6 +20,7 @@ export const PROGRAM_ID = "33333333-3333-4333-8333-333333333333";
 const SECTION_BRASS = "44444444-4444-4444-8444-444444444444";
 const SECTION_WW = "55555555-5555-4555-8555-555555555555";
 const SECTION_PERC = "77777777-7777-4777-8777-777777777777";
+const GROUP_ID = "12121212-3434-4565-8787-909090909090";
 
 const NOW = new Date("2026-10-12T18:00:00.000Z");
 const days = (n) => new Date(NOW.getTime() + n * 86_400_000).toISOString().slice(0, 10);
@@ -49,6 +50,7 @@ const ensemble = {
   theme_color: "#17402b",
   logo_url: null,
   active: true,
+  program_group_id: GROUP_ID,
   created_at: "2026-08-01T00:00:00.000Z",
 };
 
@@ -69,6 +71,7 @@ const orchestra = {
   theme_color: "#3d5a78",
   logo_url: null,
   active: true,
+  program_group_id: GROUP_ID,
   created_at: "2026-08-01T00:00:00.000Z",
 };
 
@@ -242,6 +245,16 @@ const permissions = [
 const TABLES = {
   profiles: [profile],
   memberships,
+  program_groups: [
+    {
+      id: GROUP_ID,
+      name: "RHS Music",
+      short_name: "Music",
+      sort_order: 0,
+      active: true,
+      created_at: "2026-08-01T00:00:00.000Z",
+    },
+  ],
   sections,
   ensemble_theme_tokens: [{ tokens: {} }],
   events,

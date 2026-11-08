@@ -6,6 +6,7 @@ import {
   fetchActivePrograms,
   fetchMyMemberships,
   fetchProfileByAuthId,
+  fetchProgramGroups,
   fetchSections,
   fetchThemeTokens,
 } from "../lib/queries";
@@ -14,7 +15,7 @@ import { ALL_PERMISSION_CODES, permissionsForRoles } from "../lib/permissions";
 import { ROLE_LABEL } from "../lib/constants";
 import type { PermissionCode } from "../lib/permissions";
 import type { EmbeddedMembership } from "../lib/queries";
-import type { EnsembleRow, Profile, Role, SectionRow } from "../lib/types";
+import type { EnsembleRow, Profile, ProgramGroupRow, Role, SectionRow } from "../lib/types";
 
 /**
  * Who am I, which programs am I in, and which one am I looking at?
@@ -52,11 +53,11 @@ export interface SwitchableProgram {
   section: string | null;
   isMember: boolean;
   /**
-   * The team this program sits inside (another program), or null at the top
-   * level. The switcher indents these rows under their team; nothing about the
+   * The section this program belongs to, or null for an unplaced legacy row.
+   * The switcher groups these rows under their section; nothing about the
    * program's own roster, roles or sections depends on it.
    */
-  parentId: string | null;
+  groupId: string | null;
 }
 
 export type ProgramsStatus = "loading" | "ready" | "no-roster" | "error";
@@ -72,6 +73,8 @@ export interface ProgramsState {
   membership: EmbeddedMembership | null;
   /** The current tracker's own row. */
   program: EnsembleRow | null;
+  /** Active sections (RHS Band, RHS Choir …), in display order. */
+  programGroups: ProgramGroupRow[];
   sections: SectionRow[];
   roles: Role[];
   isDirector: boolean;
@@ -171,6 +174,7 @@ const EMPTY: Omit<
   memberships: [],
   membership: null,
   program: null,
+  programGroups: [],
   sections: [],
   roles: [],
   isDirector: false,
@@ -224,25 +228,25 @@ function isStaffRole(roles: Role[]): boolean {
 }
 
 /**
- * The switcher's reading order: each team, then the programs inside it.
+ * The switcher's reading order: each section, then the programs inside it.
  *
- * A program whose team is not in the list (archived, or a program this person
- * cannot open) is shown at the top level rather than disappearing from the
- * switcher, which is the one answer that would look like a lost program.
+ * A program whose section is not in the list (archived, or one this person
+ * cannot open) is shown last rather than disappearing from the switcher, which
+ * is the one answer that would look like a lost program.
  */
-function orderForSwitcher(rows: SwitchableProgram[]): SwitchableProgram[] {
+function orderForSwitcher(
+  rows: SwitchableProgram[],
+  groups: ProgramGroupRow[]
+): SwitchableProgram[] {
   const byName = (a: SwitchableProgram, b: SwitchableProgram) =>
     a.ensemble.name.localeCompare(b.ensemble.name);
-  const present = new Set(rows.map((row) => row.ensemble.id));
-  const tops = rows
-    .filter((row) => !row.parentId || !present.has(row.parentId))
-    .sort(byName);
-  const out: SwitchableProgram[] = [];
-  for (const top of tops) {
-    out.push(top);
-    out.push(...rows.filter((row) => row.parentId === top.ensemble.id).sort(byName));
-  }
-  return out;
+  const rank = new Map(groups.map((group, index) => [group.id, index]));
+  const groupRank = (row: SwitchableProgram) =>
+    row.groupId ? (rank.get(row.groupId) ?? Number.MAX_SAFE_INTEGER) : Number.MAX_SAFE_INTEGER;
+  return [...rows].sort((a, b) => {
+    const section = groupRank(a) - groupRank(b);
+    return section !== 0 ? section : byName(a, b);
+  });
 }
 
 /**
@@ -252,7 +256,8 @@ function orderForSwitcher(rows: SwitchableProgram[]): SwitchableProgram[] {
  */
 function switchablePrograms(
   memberships: EmbeddedMembership[],
-  everyProgram: EnsembleRow[]
+  everyProgram: EnsembleRow[],
+  groups: ProgramGroupRow[]
 ): SwitchableProgram[] {
   const seen = new Set<string>();
   const out: SwitchableProgram[] = [];
@@ -264,7 +269,7 @@ function switchablePrograms(
       roles: m.roles ?? [],
       section: m.section?.name ?? null,
       isMember: true,
-      parentId: m.ensemble.parent_ensemble_id ?? null,
+      groupId: m.ensemble.program_group_id ?? null,
     });
   }
   for (const program of everyProgram) {
@@ -275,10 +280,10 @@ function switchablePrograms(
       roles: [],
       section: null,
       isMember: false,
-      parentId: program.parent_ensemble_id ?? null,
+      groupId: program.program_group_id ?? null,
     });
   }
-  return orderForSwitcher(out);
+  return orderForSwitcher(out, groups);
 }
 
 export function ProgramsProvider({ children }: { children: ReactNode }) {
@@ -301,6 +306,7 @@ export function ProgramsProvider({ children }: { children: ReactNode }) {
       profile: Profile,
       memberships: EmbeddedMembership[],
       everyProgram: EnsembleRow[],
+      programGroups: ProgramGroupRow[],
       isSystemAdmin: boolean,
       wanted: string | null,
       verifiedTeacher: boolean
@@ -348,7 +354,8 @@ export function ProgramsProvider({ children }: { children: ReactNode }) {
           // only thing that can open the start-a-program door here.
           mayStartProgram: verifiedTeacher,
           isSystemAdmin,
-          programs: switchablePrograms(memberships, everyProgram),
+          programGroups,
+          programs: switchablePrograms(memberships, everyProgram, programGroups),
           status: "no-roster",
           error: null,
         });
@@ -380,6 +387,7 @@ export function ProgramsProvider({ children }: { children: ReactNode }) {
         memberships,
         membership,
         program,
+        programGroups,
         sections,
         roles,
         isDirector: isSystemAdmin || roles.includes("director"),
@@ -406,7 +414,7 @@ export function ProgramsProvider({ children }: { children: ReactNode }) {
         // route gates would bounce them home before `my_permissions()` replied.
         permissions: isSystemAdmin ? ALL_PERMISSION_CODES : permissionsForRoles(roles),
         isSystemAdmin,
-        programs: switchablePrograms(memberships, everyProgram),
+        programs: switchablePrograms(memberships, everyProgram, programGroups),
       });
 
       // The authoritative capabilities. A failure here leaves the role-derived
@@ -439,9 +447,10 @@ export function ProgramsProvider({ children }: { children: ReactNode }) {
       // The credential is per-account, so it is read beside the profile rather
       // than per program. A failure reads as "not verified" (fail closed) and
       // leaves the server to refuse anything that needs it.
-      const [profile, teacher] = await Promise.all([
+      const [profile, teacher, programGroups] = await Promise.all([
         fetchProfileByAuthId(authUserId),
         getTeacherAccessStatus(),
+        fetchProgramGroups(),
       ]);
       const verifiedTeacher = teacher.verified;
 
@@ -452,6 +461,7 @@ export function ProgramsProvider({ children }: { children: ReactNode }) {
           canCreateProgram: accountType === "teacher" || verifiedTeacher,
           verifiedTeacher,
           mayStartProgram: verifiedTeacher,
+          programGroups,
           status: "no-roster",
           error: null,
         });
@@ -465,13 +475,14 @@ export function ProgramsProvider({ children }: { children: ReactNode }) {
         fetchMyMemberships(profile.id),
         getIsProgramAdmin(),
       ]);
-      const activeMemberships = memberships.filter((m) => m.active);
+      const activeMemberships = memberships.filter((m) => m.active && m.ensemble.active);
       const everyProgram = isSystemAdmin ? await fetchActivePrograms() : [];
 
       await loadProgram(
         profile,
         activeMemberships,
         everyProgram,
+        programGroups,
         isSystemAdmin,
         preferEnsembleId ?? readRemembered(profile.id),
         verifiedTeacher
@@ -503,13 +514,15 @@ export function ProgramsProvider({ children }: { children: ReactNode }) {
    */
   const setProgram = useCallback(
     (ensembleId: string) => {
-      const { profile, memberships, program, isSystemAdmin, programs, verifiedTeacher } = state;
+      const { profile, memberships, program, programGroups, isSystemAdmin, programs, verifiedTeacher } =
+        state;
       if (!profile || ensembleId === program?.id) return;
       remember(profile.id, ensembleId);
       void loadProgram(
         profile,
         memberships,
         programs.map((entry) => entry.ensemble),
+        programGroups,
         isSystemAdmin,
         ensembleId,
         verifiedTeacher

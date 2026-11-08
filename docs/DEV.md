@@ -375,25 +375,29 @@ Migration 031 changes shape in two ways —
   program is untouched. The Roster screen's *Remove from the program* calls it.
   `deactivate_member()` still exists for a reversible pause but is no longer
   reached from the UI.
-- **A program can sit inside a team, and only a system administrator decides
-  which.** `ensembles.parent_ensemble_id`
-  ([20261104013553_program_teams.sql](../supabase/migrations/20261104013553_program_teams.sql))
-  is a one-level link: RHS Band can hold Jazz Ensemble, Jazz Band and Pit Band,
-  and each of those is a full program with its own roster, events, attendance and
-  join code. `create_team()` starts an empty team, and `create_program_in_team()`
-  / `move_program_to_team()` add to it and rearrange it
-  ([20261104014155_create_team.sql](../supabase/migrations/20261104014155_create_team.sql));
-  all three are gated on `is_program_admin()`, so a director cannot create or
-  rearrange programs — the database refuses it, not just the hidden screen.
-  Creating one does not put the administrator on its roster: no membership is
-  written for a `program_admins` account
-  ([20261108032109_system_admin_off_rosters.sql](../supabase/migrations/20261108032109_system_admin_off_rosters.sql)),
-  and the membership rows earlier creations left on administrator accounts were
-  removed there. The account keeps every capability through `is_program_admin()`.
-  The app's *Programs & teams* screen (`/programs`, behind `system.manage`) is
-  the only surface; the switcher
-  reads the same column to indent a team's programs. Deleting a team detaches its
-  programs (`on delete set null`); it never deletes them.
+- **Sections hold programs; a team is not a program.** `program_groups` is the
+  section (RHS Band, RHS Choir, RHS Drama, RHS Orchestra): a grouping row with no
+  roster, events, attendance or join code. `ensembles.program_group_id` places a
+  program in it ([20261108180000_program_sections.sql](../supabase/migrations/20261108180000_program_sections.sql)).
+  A system administrator creates sections and moves programs
+  (`create_program_group()` / `move_program_to_group()`); a verified teacher
+  starts a program inside a section (`create_program_in_group()`) and becomes its
+  director. All three are server-gated, so hiding the screen is presentation, not
+  the boundary. The old `ensembles.parent_ensemble_id` team link and its RPCs
+  remain as history but are no longer read by the app, and the old RPCs are
+  revoked from clients. The migration keeps every program and its history: RHS
+  Band stays the active program in the RHS Band section because it owns the
+  band's events; Jazz and Choir stay programs; Mean Girls Pit is in RHS Drama;
+  the department shells are archived, not deleted (they have no events; the RHS
+  Choir shell's only member also directs the active Choir program). The migration
+  was applied to the hosted project on **2026-11-08** and verified: four sections,
+  seven programs, 162 events, one attendance row, seven memberships and fourteen
+  program sections preserved; no program is unplaced, and the old team RPCs are
+  revoked from `authenticated`. Creating a program does
+  not put a system administrator on its roster: no membership is written for a
+  `program_admins` account ([20261108032109_system_admin_off_rosters.sql](../supabase/migrations/20261108032109_system_admin_off_rosters.sql)).
+  The app's *Programs & sections* screen (`/programs`, behind `system.manage`) is
+  the only surface; the switcher groups programs by the same section.
 
 ```bash
 bash scripts/migrate/06_apply_migrations.sh --dry-run --with-tests   # rehearse

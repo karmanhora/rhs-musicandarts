@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { ChevronRight, Layers, Plus } from "lucide-react";
 import {
   Alert,
@@ -16,44 +16,46 @@ import {
 } from "../components/ui";
 import { usePrograms } from "../hooks/usePrograms";
 import type { SwitchableProgram } from "../hooks/usePrograms";
-import { createProgramInTeam, createTeam, moveProgramToTeam } from "../lib/rpc";
+import type { ProgramGroupRow } from "../lib/types";
+import { createProgramGroup, createProgramInGroup, moveProgramToGroup } from "../lib/rpc";
 
 const byName = (a: SwitchableProgram, b: SwitchableProgram) =>
   a.ensemble.name.localeCompare(b.ensemble.name);
 
 /**
- * Programs and teams — the system administrator's organizing screen.
+ * Programs and sections — the system administrator's organizing screen.
  *
- * A team is a program that holds programs: RHS Band can hold Jazz Ensemble, Jazz
- * Band and Pit Band, each a full program with its own roster, events and join
- * code. The link lives in `ensembles.parent_ensemble_id` (migration
- * 20261104013553) and is one level deep. A team can also be started empty
- * (`create_team()`), which is what makes the first program in a new subject
- * possible.
+ * A section is a grouping row, not a program: RHS Band can hold Jazz, Concert
+ * Band and Pit Band, and each of those is a full program with its own roster,
+ * events and join code. The link lives in `ensembles.program_group_id` (migration
+ * 20261108180000); a section itself has no roster, events or join code.
  *
- * Both actions here are administrator-only, and this screen is the client's
- * half of that: `create_team()`, `create_program_in_team()` and
- * `move_program_to_team()` refuse anybody without a `program_admins` row, so
+ * Creating a section is administrator-only, and this screen is the client's half
+ * of that: `create_program_group()`, `create_program_in_group()` and
+ * `move_program_to_group()` refuse anybody without a `program_admins` row, so
  * hiding the route is presentation, not the boundary. A director keeps every
  * right they had inside their own program; none of those rights include
- * rearranging programs.
+ * rearranging sections.
  *
- * Creating one does not put the administrator on its roster: those RPCs write
- * no membership for a `program_admins` account (migration 20261108032109),
- * because that account already holds every capability in every program. The
- * administrator stays invisible on the roster and keeps full access.
+ * Creating a program here does not put the administrator on its roster: those
+ * RPCs write no membership for a `program_admins` account (migration
+ * 20261108032109), because that account already holds every capability in every
+ * program. The administrator stays invisible on the roster and keeps full access.
  */
 export function ProgramsScreen() {
   const app = usePrograms();
   const { toast } = useToast();
 
-  const [creatingTeam, setCreatingTeam] = useState(false);
-  const [teamName, setTeamName] = useState("");
-  const [teamInstruments, setTeamInstruments] = useState("");
-  const [teamBusy, setTeamBusy] = useState(false);
-  const [teamError, setTeamError] = useState<string | null>(null);
+  const groups = app.programGroups.filter((group) => group.active);
+  const groupIds = new Set(groups.map((group) => group.id));
 
-  const [addingTo, setAddingTo] = useState<SwitchableProgram | null>(null);
+  const [creatingGroup, setCreatingGroup] = useState(false);
+  const [groupName, setGroupName] = useState("");
+  const [groupShortName, setGroupShortName] = useState("");
+  const [groupBusy, setGroupBusy] = useState(false);
+  const [groupError, setGroupError] = useState<string | null>(null);
+
+  const [addingTo, setAddingTo] = useState<ProgramGroupRow | null>(null);
   const [name, setName] = useState("");
   const [instruments, setInstruments] = useState("");
   const [adding, setAdding] = useState(false);
@@ -64,24 +66,21 @@ export function ProgramsScreen() {
   const [moveBusy, setMoveBusy] = useState(false);
   const [moveError, setMoveError] = useState<string | null>(null);
 
-  /** Every top-level program, read as a team: it can hold programs. */
-  const teams = useMemo(
-    () => app.programs.filter((entry) => !entry.parentId).sort(byName),
-    [app.programs]
-  );
+  const programsOf = (groupId: string) =>
+    app.programs.filter((entry) => entry.groupId === groupId).sort(byName);
+  const ungrouped = app.programs
+    .filter((entry) => !entry.groupId || !groupIds.has(entry.groupId))
+    .sort(byName);
 
-  const programsOf = (teamId: string) =>
-    app.programs.filter((entry) => entry.parentId === teamId).sort(byName);
-
-  function openCreateTeam() {
-    setCreatingTeam(true);
-    setTeamName("");
-    setTeamInstruments("");
-    setTeamError(null);
+  function openCreateGroup() {
+    setCreatingGroup(true);
+    setGroupName("");
+    setGroupShortName("");
+    setGroupError(null);
   }
 
-  function openAdd(team: SwitchableProgram) {
-    setAddingTo(team);
+  function openAdd(group: ProgramGroupRow) {
+    setAddingTo(group);
     setName("");
     setInstruments("");
     setAddError(null);
@@ -89,32 +88,32 @@ export function ProgramsScreen() {
 
   function openMove(program: SwitchableProgram) {
     setMoving(program);
-    setMoveTo(program.parentId ?? "");
+    setMoveTo(program.groupId ?? "");
     setMoveError(null);
   }
 
-  async function submitTeam() {
-    if (teamName.trim().length < 2) {
-      setTeamError("Give the team a name — at least two letters.");
+  async function submitGroup() {
+    if (groupName.trim().length < 2) {
+      setGroupError("Give the section a name — at least two letters.");
       return;
     }
 
-    setTeamBusy(true);
-    setTeamError(null);
-    const { result, error: rpcError } = await createTeam(teamName, {
-      instruments: teamInstruments.split(",").map((value) => value.trim()).filter(Boolean),
+    setGroupBusy(true);
+    setGroupError(null);
+    const { result, error: rpcError } = await createProgramGroup(groupName, {
+      shortName: groupShortName,
     });
 
     if (rpcError || !result?.ok) {
-      setTeamBusy(false);
-      setTeamError(rpcError?.message || result?.message || "Could not create the team.");
+      setGroupBusy(false);
+      setGroupError(rpcError?.message || result?.message || "Could not create the section.");
       return;
     }
 
-    setTeamBusy(false);
-    setCreatingTeam(false);
-    toast.success(result.message ?? "The team was created.");
-    await app.refresh(result.program_id ?? undefined);
+    setGroupBusy(false);
+    setCreatingGroup(false);
+    toast.success(result.message ?? "The section was created.");
+    await app.refresh();
   }
 
   async function addProgram() {
@@ -126,7 +125,7 @@ export function ProgramsScreen() {
 
     setAdding(true);
     setAddError(null);
-    const { result, error: rpcError } = await createProgramInTeam(addingTo.ensemble.id, name, {
+    const { result, error: rpcError } = await createProgramInGroup(addingTo.id, name, {
       instruments: instruments.split(",").map((value) => value.trim()).filter(Boolean),
     });
 
@@ -139,14 +138,14 @@ export function ProgramsScreen() {
     setAdding(false);
     setAddingTo(null);
     toast.success(result.message ?? "The program was created.");
-    await app.refresh();
+    await app.refresh(result.program_id ?? undefined);
   }
 
   async function moveProgram() {
     if (!moving) return;
     setMoveBusy(true);
     setMoveError(null);
-    const { result, error: rpcError } = await moveProgramToTeam(
+    const { result, error: rpcError } = await moveProgramToGroup(
       moving.ensemble.id,
       moveTo || null
     );
@@ -166,37 +165,37 @@ export function ProgramsScreen() {
   return (
     <main className="safe-b mx-auto w-full max-w-2xl px-4 py-6">
       <PageHeader
-        title="Programs & teams"
+        title="Programs & sections"
         kicker="System administration"
-        note="A team holds programs — Jazz Ensemble, Jazz Band and Pit Band inside RHS Band. Each program keeps its own roster, events, attendance and join code, and you can move one between teams at any time."
+        note="A section holds programs — Jazz, Concert Band and Pit Band inside RHS Band. Each program keeps its own roster, events, attendance and join code; a section is only the grouping."
         actions={
-          <Button icon={<Plus className="h-4 w-4" />} onClick={openCreateTeam}>
-            Create team
+          <Button icon={<Plus className="h-4 w-4" />} onClick={openCreateGroup}>
+            Create section
           </Button>
         }
       />
 
-      {app.programs.length === 0 ? (
+      {groups.length === 0 && app.programs.length === 0 ? (
         <EmptyState
           icon={<Layers className="h-6 w-6" />}
-          title="No programs yet"
-          body="Start a team, then add the programs that belong inside it."
-          action={<Button onClick={openCreateTeam}>Create team</Button>}
+          title="No sections yet"
+          body="Start a section, then add the programs that belong inside it."
+          action={<Button onClick={openCreateGroup}>Create section</Button>}
         />
       ) : null}
 
-      {teams.map((team) => {
-        const children = programsOf(team.ensemble.id);
+      {groups.map((group) => {
+        const children = programsOf(group.id);
         return (
-          <section key={team.ensemble.id} className="mt-6">
-            <SectionTitle className="mb-3">{team.ensemble.name}</SectionTitle>
+          <section key={group.id} className="mt-6">
+            <SectionTitle className="mb-3">{group.name}</SectionTitle>
             <List>
               {children.map((child) => (
                 <Row
                   key={child.id}
                   icon={<Layers className="h-4 w-4" />}
                   title={child.ensemble.name}
-                  subtitle={`In ${team.ensemble.name} — tap to move it`}
+                  subtitle={`In ${group.name} — tap to move it`}
                   trailing={
                     <ChevronRight
                       aria-hidden="true"
@@ -209,66 +208,70 @@ export function ProgramsScreen() {
 
               <Row
                 icon={<Plus className="h-4 w-4" />}
-                title={`Add a program to ${team.ensemble.name}`}
+                title={`Add a program to ${group.name}`}
                 subtitle="It gets its own roster, events and join code"
-                onClick={() => openAdd(team)}
+                onClick={() => openAdd(group)}
               />
-
-              {/* A team with nothing in it can still be moved into another one;
-                  once it holds programs the server refuses that. */}
-              {children.length === 0 ? (
-                <Row
-                  title={`Move ${team.ensemble.name} into a team`}
-                  subtitle="It holds no programs of its own"
-                  trailing={
-                    <ChevronRight
-                      aria-hidden="true"
-                      className="h-4 w-4 shrink-0 text-[var(--cue-subtle)]"
-                    />
-                  }
-                  onClick={() => openMove(team)}
-                />
-              ) : null}
             </List>
           </section>
         );
       })}
 
+      {ungrouped.length > 0 ? (
+        <section className="mt-6">
+          <SectionTitle className="mb-3">No section</SectionTitle>
+          <List>
+            {ungrouped.map((program) => (
+              <Row
+                key={program.id}
+                icon={<Layers className="h-4 w-4" />}
+                title={program.ensemble.name}
+                subtitle="Tap to place it in a section"
+                trailing={
+                  <ChevronRight
+                    aria-hidden="true"
+                    className="h-4 w-4 shrink-0 text-[var(--cue-subtle)]"
+                  />
+                }
+                onClick={() => openMove(program)}
+              />
+            ))}
+          </List>
+        </section>
+      ) : null}
+
       <Sheet
-        open={creatingTeam}
-        onClose={() => setCreatingTeam(false)}
-        title="Create a team"
-        description="A team holds programs, like RHS Band holding Jazz Ensemble"
+        open={creatingGroup}
+        onClose={() => setCreatingGroup(false)}
+        title="Create a section"
+        description="A section holds programs, like RHS Band holding Jazz"
         footer={
-          <Button block loading={teamBusy} onClick={() => void submitTeam()}>
-            Create team
+          <Button block loading={groupBusy} onClick={() => void submitGroup()}>
+            Create section
           </Button>
         }
       >
         <div className="space-y-4">
-          {teamError ? <Alert tone="error">{teamError}</Alert> : null}
-          <Field label="Team name" hint="For example: RHS Band, Orchestra, Drama">
+          {groupError ? <Alert tone="error">{groupError}</Alert> : null}
+          <Field label="Section name" hint="For example: RHS Band, RHS Choir, RHS Drama, RHS Orchestra">
             <Input
-              value={teamName}
-              onChange={(event) => setTeamName(event.target.value)}
+              value={groupName}
+              onChange={(event) => setGroupName(event.target.value)}
               placeholder="RHS Band"
               autoComplete="off"
             />
           </Field>
-          <Field
-            label="Sections (optional)"
-            hint="Comma separated — you can change these later, and each program can have its own."
-          >
+          <Field label="Short name" hint="Optional — shown where space is tight.">
             <Input
-              value={teamInstruments}
-              onChange={(event) => setTeamInstruments(event.target.value)}
-              placeholder="Trumpet, Saxophone, Rhythm"
+              value={groupShortName}
+              onChange={(event) => setGroupShortName(event.target.value)}
+              placeholder="Band"
               autoComplete="off"
             />
           </Field>
           <p className="type-meta">
-            The team starts empty and closed, with its own join code. Your administrator access
-            needs no roster row, so you are not added to it. Add its programs next.
+            The section is only a grouping. It has no roster, events or join code; the programs
+            inside it do.
           </p>
         </div>
       </Sheet>
@@ -277,7 +280,7 @@ export function ProgramsScreen() {
         open={addingTo !== null}
         onClose={() => setAddingTo(null)}
         title="Add a program"
-        description={addingTo ? `Inside ${addingTo.ensemble.name}` : undefined}
+        description={addingTo ? `Inside ${addingTo.name}` : undefined}
         footer={
           <Button block loading={adding} onClick={() => void addProgram()}>
             Create program
@@ -324,14 +327,14 @@ export function ProgramsScreen() {
       >
         <div className="space-y-4">
           {moveError ? <Alert tone="error">{moveError}</Alert> : null}
-          <Field label="Team" hint="Where this program should sit">
+          <Field label="Section" hint="Where this program should sit">
             <Select value={moveTo} onChange={(event) => setMoveTo(event.target.value)}>
-              <option value="">No team — on its own</option>
-              {teams
-                .filter((team) => team.ensemble.id !== moving?.ensemble.id)
-                .map((team) => (
-                  <option key={team.ensemble.id} value={team.ensemble.id}>
-                    {team.ensemble.name}
+              <option value="">No section — unplaced</option>
+              {groups
+                .filter((group) => group.id !== moving?.groupId)
+                .map((group) => (
+                  <option key={group.id} value={group.id}>
+                    {group.name}
                   </option>
                 ))}
             </Select>

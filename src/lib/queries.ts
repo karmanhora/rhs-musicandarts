@@ -18,6 +18,7 @@ import type {
   NotificationRow,
   PersonalEventRow,
   Profile,
+  ProgramGroupRow,
   RoleAssignmentRow,
   RosterMember,
   SectionRow,
@@ -60,7 +61,7 @@ export async function fetchMyMemberships(userId: string): Promise<EmbeddedMember
     .from("memberships")
     .select(
       "id,user_id,ensemble_id,section_id,roles,active,joined_at,email_upcoming_events," +
-        "ensemble:ensembles(id,slug,name,short_name,theme_color,logo_url,active,parent_ensemble_id,created_at)," +
+        "ensemble:ensembles(id,slug,name,short_name,theme_color,logo_url,active,program_group_id,created_at)," +
         "section:sections(id,name,sort_order)"
     )
     .eq("user_id", userId)
@@ -77,10 +78,21 @@ export async function fetchMyMemberships(userId: string): Promise<EmbeddedMember
 export async function fetchActivePrograms(): Promise<EnsembleRow[]> {
   const { data } = await supabase
     .from("ensembles")
-    .select("id,slug,name,short_name,theme_color,logo_url,active,parent_ensemble_id,created_at")
+    .select("id,slug,name,short_name,theme_color,logo_url,active,program_group_id,created_at")
     .eq("active", true)
     .order("name");
   return (data ?? []) as unknown as EnsembleRow[];
+}
+
+/** Every active section. Readable by any signed-in account; only an admin writes. */
+export async function fetchProgramGroups(): Promise<ProgramGroupRow[]> {
+  const { data } = await supabase
+    .from("program_groups")
+    .select("id,name,short_name,sort_order,active,created_at")
+    .eq("active", true)
+    .order("sort_order")
+    .order("name");
+  return (data ?? []) as unknown as ProgramGroupRow[];
 }
 
 export async function fetchSections(programId: string): Promise<SectionRow[]> {

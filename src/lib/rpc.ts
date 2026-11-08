@@ -162,53 +162,42 @@ export const createProgram = (
 // --- Sections / instruments (director) --------------------------------------
 
 /**
- * System administrator only: start an empty team — a program that holds
- * programs. It begins with its own join code; the caller is a system
- * administrator and is not added to its roster. `createProgramInTeam()` is what
- * puts the first program inside it.
+ * System administrator only: create a section — the grouping row that holds
+ * programs (RHS Band, RHS Choir …). A section has no roster or join code.
  */
-export const createTeam = (
+export const createProgramGroup = (name: string, opts?: { shortName?: string }) =>
+  callRpc("create_program_group", {
+    p_name: name.trim(),
+    p_short_name: opts?.shortName?.trim() || null,
+  });
+
+/**
+ * Create a program inside a section. A verified teacher becomes its director;
+ * a system administrator gets no roster row and keeps every capability.
+ */
+export const createProgramInGroup = (
+  groupId: string,
   name: string,
-  opts?: { shortName?: string; instruments?: string[] }
+  opts?: { shortName?: string; displayName?: string; instruments?: string[] }
 ) => {
   const instruments = (opts?.instruments ?? [])
     .map((value) => value.trim())
     .filter(Boolean);
-  return callRpc("create_team", {
+  return callRpc("create_program_in_group", {
+    p_group: groupId,
     p_name: name.trim(),
     p_short_name: opts?.shortName?.trim() || null,
+    p_display_name: opts?.displayName?.trim() || null,
     p_instruments: instruments.length ? instruments : null,
   });
 };
 
 /**
- * System administrator only: create a program inside a team — "Jazz Ensemble"
- * under "RHS Band". The caller gains no roster row: a `program_admins` account
- * already holds every capability in every program; the server refuses
- * everybody else.
+ * System administrator only: put a program in a section, or leave it ungrouped
+ * when `groupId` is null. Memberships, events and attendance are untouched.
  */
-export const createProgramInTeam = (
-  parentId: string,
-  name: string,
-  opts?: { shortName?: string; instruments?: string[] }
-) => {
-  const instruments = (opts?.instruments ?? [])
-    .map((value) => value.trim())
-    .filter(Boolean);
-  return callRpc("create_program_in_team", {
-    p_parent: parentId,
-    p_name: name.trim(),
-    p_short_name: opts?.shortName?.trim() || null,
-    p_instruments: instruments.length ? instruments : null,
-  });
-};
-
-/**
- * System administrator only: put a program in a team, or take it out when
- * `parentId` is null. Memberships, events and attendance are untouched.
- */
-export const moveProgramToTeam = (programId: string, parentId: string | null) =>
-  callRpc("move_program_to_team", { p_program: programId, p_parent: parentId });
+export const moveProgramToGroup = (programId: string, groupId: string | null) =>
+  callRpc("move_program_to_group", { p_program: programId, p_group: groupId });
 
 /** Director-only: add one instrument/section to the program. */
 export const addProgramSection = (programId: string, name: string) =>
