@@ -13,6 +13,7 @@ import type {
   CheckinSessionRow,
   EnsembleRow,
   EventRow,
+  FeedbackSubmission,
   MembershipRow,
   NotificationRow,
   PersonalEventRow,
@@ -353,6 +354,33 @@ export async function deleteEvent(
 ): Promise<{ error: { message: string } | null }> {
   const { error } = await supabase.from("events").delete().eq("id", eventId);
   return { error: error ? { message: error.message } : null };
+}
+
+/**
+ * Every feedback message, newest first — the owner's inbox.
+ *
+ * The read is one table select, and the database decides who may see a row: the
+ * only SELECT policy on `feedback_submissions` calls `is_feedback_owner()`, so a
+ * student, teacher or program administrator gets an empty list even if they ask
+ * PostgREST directly. The error is returned rather than swallowed, because an
+ * inbox that silently shows "no feedback" during an outage is the one wrong
+ * answer.
+ */
+export async function fetchFeedbackSubmissions(): Promise<{
+  rows: FeedbackSubmission[];
+  error: string | null;
+}> {
+  const { data, error } = await supabase
+    .from("feedback_submissions")
+    .select(
+      "id,category,message,affected_feature,contact_email,submitted_by,status,created_at,updated_at"
+    )
+    .order("created_at", { ascending: false });
+
+  return {
+    rows: (data ?? []) as FeedbackSubmission[],
+    error: error ? error.message : null,
+  };
 }
 
 /**

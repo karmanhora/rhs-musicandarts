@@ -10,6 +10,7 @@ import { ProgramsProvider, usePrograms } from "./hooks/usePrograms";
 import { useAuth } from "./hooks/useAuth";
 import { PreferencesProvider } from "./hooks/usePreferences";
 import { AvatarUrlProvider } from "./hooks/useAvatars";
+import { useFeedbackOwner } from "./hooks/useFeedbackOwner";
 import type { PermissionCode } from "./lib/permissions";
 
 const JoinProgramScreen = lazy(() =>
@@ -66,6 +67,14 @@ const InvitationsScreen = lazy(() =>
 const ProgramsScreen = lazy(() =>
   import("./screens/ProgramsScreen").then((module) => ({
     default: module.ProgramsScreen,
+  }))
+);
+const FeedbackScreen = lazy(() =>
+  import("./screens/FeedbackScreen").then((module) => ({ default: module.FeedbackScreen }))
+);
+const FeedbackInboxScreen = lazy(() =>
+  import("./screens/FeedbackInboxScreen").then((module) => ({
+    default: module.FeedbackInboxScreen,
   }))
 );
 const SetupScreen = lazy(() =>
@@ -125,6 +134,33 @@ function PermissionGate({
 }) {
   const app = usePrograms();
   return app.can(permission) ? <>{children}</> : <Navigate to="/" replace />;
+}
+
+/**
+ * The feedback inbox is not a capability. It belongs to the person behind the
+ * confirmed owner address, which the server resolves through Supabase Auth, so
+ * this gate asks the server rather than the current membership. A program
+ * administrator's capabilities deliberately do not satisfy it.
+ */
+function FeedbackOwnerGate({ children }: { children: ReactNode }) {
+  const { owner, loading, error, refresh } = useFeedbackOwner();
+
+  if (loading) return <RouteSkeleton />;
+
+  if (error) {
+    return (
+      <div className="safe-t flex min-h-full items-center justify-center p-6">
+        <div className="w-full max-w-md space-y-3">
+          <Alert tone="error">{error}</Alert>
+          <Button block icon={<RefreshCw className="h-4 w-4" />} onClick={() => void refresh()}>
+            Try again
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  return owner ? <>{children}</> : <Navigate to="/" replace />;
 }
 
 /**
@@ -291,6 +327,18 @@ function ProgramRoutes() {
             >
               <RecordsScreen />
             </AnyPermissionGate>
+          }
+        />
+        {/* Feedback is for every member; the inbox is the owner's alone and its
+            gate asks the server's owner predicate. Sending feedback never reads
+            another person's message — the table has no SELECT policy for it. */}
+        <Route path="/feedback" element={<FeedbackScreen />} />
+        <Route
+          path="/feedback/inbox"
+          element={
+            <FeedbackOwnerGate>
+              <FeedbackInboxScreen />
+            </FeedbackOwnerGate>
           }
         />
         <Route path="/settings" element={<AccountSettingsScreen />} />

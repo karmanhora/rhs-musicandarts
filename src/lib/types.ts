@@ -679,6 +679,32 @@ export interface DigestReachabilityRow {
   status: DigestReachabilityStatus;
 }
 
+/**
+ * What a feedback message is about. Mirrors the table's allow-list in migration
+ * 20261108150000 — a value the server would refuse never reaches the interface.
+ */
+export type FeedbackCategory = "bug" | "feature" | "suggestion" | "broken" | "other";
+
+/** The owner's triage state for one message. */
+export type FeedbackStatus = "new" | "reviewing" | "resolved";
+
+/**
+ * One row of `feedback_submissions` (20261108150000), as the owner's inbox reads
+ * it. `submitted_by` is carried for completeness but never shown: the person is
+ * not what the message is about, and the form does not collect a name.
+ */
+export interface FeedbackSubmission {
+  id: string;
+  category: FeedbackCategory;
+  message: string;
+  affected_feature: string | null;
+  contact_email: string | null;
+  submitted_by: string | null;
+  status: FeedbackStatus;
+  created_at: string;
+  updated_at: string;
+}
+
 /** A member of the band: the person plus their membership and section. */
 export interface RosterMember {
   user_id: string;

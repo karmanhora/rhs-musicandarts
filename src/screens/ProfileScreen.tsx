@@ -7,6 +7,7 @@ import {
   ChevronRight,
   KeyRound,
   LogOut,
+  MessageSquare,
   Pencil,
   Plus,
   RefreshCw,
@@ -459,6 +460,15 @@ export function ProfileScreen() {
                 onClick={() => navigate("/roles")}
               />
             ) : null}
+            <Row
+              icon={<MessageSquare className="h-4 w-4" />}
+              title="Send feedback"
+              subtitle="Report a bug or suggest an improvement to the site"
+              trailing={
+                <ChevronRight aria-hidden="true" className="h-4 w-4 text-[var(--cue-subtle)]" />
+              }
+              onClick={() => navigate("/feedback")}
+            />
             <Row
               icon={<ShieldCheck className="h-4 w-4" />}
               title="Privacy policy"

@@ -5,6 +5,8 @@ import type {
   AttendanceStatus,
   CheckinMode,
   DigestReachabilityStatus,
+  FeedbackCategory,
+  FeedbackStatus,
   Role,
 } from "./types";
 
@@ -295,3 +297,53 @@ export function writeAuthAudience(audience: AuthAudience): void {
     /* private mode: the choice just doesn't survive the session */
   }
 }
+
+/**
+ * The feedback form's whole vocabulary. The values are the table's allow-list
+ * (migration 20261108150000); the hints say what each one is *for*, so somebody
+ * filing a bug does not have to guess between four similar words.
+ */
+export interface FeedbackCategoryOption {
+  value: FeedbackCategory;
+  label: string;
+  hint: string;
+}
+
+export const FEEDBACK_CATEGORIES: FeedbackCategoryOption[] = [
+  { value: "bug", label: "Bug Report", hint: "Something crashed or behaved wrongly." },
+  { value: "feature", label: "Feature Request", hint: "Something you would like the site to do." },
+  { value: "suggestion", label: "General Suggestion", hint: "An idea for making it better." },
+  { value: "broken", label: "Something Isn't Working", hint: "A page or button won't do what it should." },
+  { value: "other", label: "Other", hint: "Anything that doesn't fit above." },
+];
+
+const FEEDBACK_BY_VALUE = new Map(FEEDBACK_CATEGORIES.map((entry) => [entry.value, entry]));
+
+/** A stored category's display label, including one written by a later build. */
+export function feedbackCategoryLabel(value: string | null | undefined): string {
+  return FEEDBACK_BY_VALUE.get(value as FeedbackCategory)?.label ?? "Other";
+}
+
+export const FEEDBACK_STATUS_LABEL: Record<FeedbackStatus, string> = {
+  new: "New",
+  reviewing: "Reviewing",
+  resolved: "Resolved",
+};
+
+/**
+ * New borrows the attention colour, reviewing the slate of something in hand,
+ * resolved the present green. Only the four attendance statuses are otherwise
+ * allowed to carry a colour, and these three reuse their proven token pairs.
+ */
+export const FEEDBACK_STATUS_CHIP: Record<FeedbackStatus, string> = {
+  new: "bg-[var(--cue-late-bg)] text-[var(--cue-late)]",
+  reviewing: "bg-[var(--cue-excused-bg)] text-[var(--cue-excused)]",
+  resolved: "bg-[var(--cue-present-bg)] text-[var(--cue-present)]",
+};
+
+/** What a category means when it appears on a status menu or a filter. */
+export const FEEDBACK_STATUS_HINT: Record<FeedbackStatus, string> = {
+  new: "Not looked at yet.",
+  reviewing: "Being worked on or considered.",
+  resolved: "Answered, fixed or deliberately closed.",
+};

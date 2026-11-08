@@ -8,9 +8,11 @@ import {
   ChevronsUpDown,
   ClipboardCheck,
   Home,
+  Inbox,
   KeyRound,
   LayoutDashboard,
   LogOut,
+  MessageSquare,
   Moon,
   QrCode,
   Settings,
@@ -25,6 +27,7 @@ import { usePrograms } from "../hooks/usePrograms";
 import { useAuth } from "../hooks/useAuth";
 import { useDark } from "../hooks/useDark";
 import { usePreferences } from "../hooks/usePreferences";
+import { useFeedbackOwner } from "../hooks/useFeedbackOwner";
 import { ProgramSwitcher } from "./ProgramSwitcher";
 import { NotificationCenter } from "./NotificationCenter";
 import {
@@ -362,6 +365,8 @@ function AccountSheet({
   const prefs = usePreferences();
   const navigate = useNavigate();
   const [signingOut, setSigningOut] = useState(false);
+  /** Asked only once this sheet is opened; a member never pays for the check. */
+  const feedbackOwner = useFeedbackOwner(open);
 
   /**
    * Setup is offered until it is finished, and only to somebody the server says
@@ -442,6 +447,26 @@ function AccountSheet({
               }
               trailing={<ChevronRight aria-hidden="true" className="h-4 w-4 text-[var(--cue-subtle)]" />}
               onClick={() => go("/records")}
+            />
+          ) : null}
+          {/* Feedback is a member's way to reach the site owner. It sits with
+              the other account destinations rather than taking one of the five
+              bottom-bar places, and the owner's inbox only appears when the
+              server says this account is the owner. */}
+          <Row
+            icon={<MessageSquare className="h-4 w-4" />}
+            title="Send feedback"
+            subtitle="Report a bug or suggest an improvement — it goes to the site owner"
+            trailing={<ChevronRight aria-hidden="true" className="h-4 w-4 text-[var(--cue-subtle)]" />}
+            onClick={() => go("/feedback")}
+          />
+          {feedbackOwner.owner ? (
+            <Row
+              icon={<Inbox className="h-4 w-4" />}
+              title="Feedback inbox"
+              subtitle="Read and triage what people have sent"
+              trailing={<ChevronRight aria-hidden="true" className="h-4 w-4 text-[var(--cue-subtle)]" />}
+              onClick={() => go("/feedback/inbox")}
             />
           ) : null}
           {/* The way back to the invitation form for a teacher who signed in

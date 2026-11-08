@@ -8,6 +8,8 @@ import type {
   AttendanceStatus,
   BackgroundId,
   DashboardModuleId,
+  FeedbackCategory,
+  FeedbackStatus,
   InvitationRow,
   MakeupEmailContext,
   MakeupEmailSendResponse,
@@ -872,4 +874,52 @@ export async function setMyPreferences(patch: {
     return { data: null, error: payload?.message ?? "Your preferences could not be saved." };
   }
   return { data: payload, error: null };
+}
+
+// --- Feedback (every signed-in member; management by the site owner) ---------
+
+/**
+ * Send one feedback message to the site owner.
+ *
+ * The RPC is the only insert path: it derives `submitted_by` from the token,
+ * validates the category and lengths, refuses an immediate repeat and a burst,
+ * and stores nothing when any check fails. The browser never names a profile.
+ */
+export const submitFeedback = (input: {
+  category: FeedbackCategory;
+  message: string;
+  affectedFeature?: string | null;
+  contactEmail?: string | null;
+}) =>
+  callRpc("submit_feedback", {
+    p_category: input.category,
+    p_message: input.message,
+    p_affected_feature: input.affectedFeature?.trim() || null,
+    p_contact_email: input.contactEmail?.trim() || null,
+  });
+
+/** Owner only: move one submission between new, reviewing and resolved. */
+export const setFeedbackStatus = (id: string, status: FeedbackStatus) =>
+  callRpc("set_feedback_status", { p_id: id, p_status: status });
+
+/** Owner only: permanently delete one submission. */
+export const deleteFeedback = (id: string) => callRpc("delete_feedback", { p_id: id });
+
+/**
+ * The caller's owner status — `{ owner: false }` on any failure, so a broken
+ * request can never open the inbox. This drives the account-sheet entry and the
+ * route gate; `feedback_submissions` and the management RPCs are the boundary.
+ */
+export async function getFeedbackOwnerStatus(): Promise<{
+  owner: boolean;
+  error: string | null;
+}> {
+  const { data, error } = await supabase.rpc("feedback_owner_status");
+  if (error) return { owner: false, error: error.message };
+
+  const result = data as { ok?: boolean; owner?: boolean } | null;
+  if (!result || result.ok !== true) {
+    return { owner: false, error: "Could not confirm owner access." };
+  }
+  return { owner: result.owner === true, error: null };
 }
