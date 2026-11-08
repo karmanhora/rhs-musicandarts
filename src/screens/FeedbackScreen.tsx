@@ -71,6 +71,7 @@ export function FeedbackScreen() {
   const accountEmail = auth.email?.trim() ?? "";
   const usingAccountEmail =
     accountEmail.length > 0 && email.trim().toLowerCase() === accountEmail.toLowerCase();
+  const selectedCategory = FEEDBACK_CATEGORIES.find((option) => option.value === category);
 
   function validate(): boolean {
     const next: typeof errors = {};
@@ -144,8 +145,8 @@ export function FeedbackScreen() {
           title="Thank you"
           note="Your message is with the site owner."
         />
-        <div className="cue-card mt-6 p-6 sm:p-8">
-          <span className="cue-status-pop flex h-12 w-12 items-center justify-center rounded-full bg-[var(--cue-leaf-soft)] text-[var(--cue-leaf)]">
+        <div className="feedback-sheet feedback-sheet--success mt-6 p-6 sm:p-8">
+          <span className="cue-status-pop flex h-12 w-12 items-center justify-center rounded-full border-2 border-[var(--cue-ink)] bg-[var(--cue-panel)] text-[var(--cue-leaf)]">
             <CheckCircle2 aria-hidden="true" className="h-6 w-6" />
           </span>
           <h2 className="type-heading mt-4">We&rsquo;ve got it.</h2>
@@ -168,7 +169,7 @@ export function FeedbackScreen() {
   }
 
   return (
-    <main className="safe-b mx-auto w-full max-w-4xl px-4 py-6 sm:px-6">
+    <main className="safe-b mx-auto w-full max-w-2xl px-4 py-6 sm:px-6">
       <PageHeader
         kicker="Feedback"
         title="Tell us what you think"
@@ -179,7 +180,7 @@ export function FeedbackScreen() {
         <form
           onSubmit={(event) => void handleSubmit(event)}
           noValidate
-          className="cue-card mx-auto w-full rounded-[var(--radius-panel)] p-4 sm:p-6"
+          className="feedback-sheet p-4 sm:p-6"
         >
           {submitError ? (
             <Alert tone="error" className="mb-5">
@@ -187,12 +188,11 @@ export function FeedbackScreen() {
             </Alert>
           ) : null}
 
-          <div className="grid gap-6 lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.35fr)]">
-            <fieldset className="min-w-0">
+          <fieldset className="min-w-0">
             <legend className="mb-1.5 block text-[0.8125rem] font-semibold text-[var(--cue-ink)]">
               What kind of feedback is this?
             </legend>
-            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-1">
+            <div className="grid grid-cols-1 gap-2 min-[380px]:grid-cols-2 sm:grid-cols-3">
               {FEEDBACK_CATEGORIES.map((option) => {
                 const Icon = CATEGORY_ICON[option.value];
                 const active = category === option.value;
@@ -206,42 +206,45 @@ export function FeedbackScreen() {
                       setErrors((prev) => ({ ...prev, category: undefined }));
                     }}
                     className={cn(
-                      "motion-press flex min-h-14 items-start gap-3 rounded-[var(--radius-control)] border p-3 text-left",
-                      active
-                        ? "border-[var(--cue-leaf)] bg-[var(--cue-leaf-soft)]"
-                        : "border-[var(--cue-line)] bg-[var(--cue-panel)] hover:bg-[var(--cue-raised)]"
+                      "feedback-choice motion-press flex min-h-12 items-center gap-2 px-3 py-2.5 text-left",
+                      active ? "text-[var(--cue-ink)]" : "text-[var(--cue-muted)]"
                     )}
                   >
                     <Icon
                       aria-hidden="true"
                       className={cn(
-                        "mt-0.5 h-4 w-4 shrink-0",
+                        "h-4 w-4 shrink-0",
                         active ? "text-[var(--cue-leaf)]" : "text-[var(--cue-subtle)]"
                       )}
                     />
-                    <span className="min-w-0 flex-1">
-                      <span className="block text-sm font-semibold">{option.label}</span>
-                      <span className="type-meta mt-0.5 block">{option.hint}</span>
+                    <span className="min-w-0 flex-1 text-[0.8125rem] leading-snug font-semibold">
+                      {option.label}
                     </span>
-                    {active ? (
-                      <Check
-                        aria-hidden="true"
-                        className="mt-0.5 h-4 w-4 shrink-0 text-[var(--cue-leaf)]"
-                      />
-                    ) : null}
                   </button>
                 );
               })}
             </div>
+            <p className="type-meta mt-2 flex min-h-5 items-start gap-1.5">
+              {selectedCategory ? (
+                <>
+                  <Check
+                    aria-hidden="true"
+                    className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[var(--cue-leaf)]"
+                  />
+                  <span>{selectedCategory.hint}</span>
+                </>
+              ) : (
+                "Pick the closest match — the owner can re-file it."
+              )}
+            </p>
             {errors.category ? (
-              <p className="mt-1.5 text-[0.8125rem] font-medium text-[var(--cue-absent)]">
+              <p className="mt-1 text-[0.8125rem] font-medium text-[var(--cue-absent)]">
                 {errors.category}
               </p>
             ) : null}
-            </fieldset>
+          </fieldset>
 
-            <div className="min-w-0 space-y-4">
-              <div>
+          <div className="mt-5">
             <Field
               label="What would you like us to know?"
               error={errors.message}
@@ -254,9 +257,9 @@ export function FeedbackScreen() {
                   setErrors((prev) => ({ ...prev, message: undefined }));
                 }}
                 maxLength={MAX_MESSAGE}
-                rows={7}
+                rows={6}
                 placeholder="For example: on the Calendar page, tapping an event shows the wrong date on my phone."
-                className="min-h-40 resize-y"
+                className="feedback-control min-h-36 resize-y"
               />
             </Field>
             <p
@@ -267,10 +270,10 @@ export function FeedbackScreen() {
               )}
             >
               {message.length.toLocaleString()} / {MAX_MESSAGE.toLocaleString()}
-              </p>
-            </div>
+            </p>
+          </div>
 
-            <div className="grid items-start gap-x-4 gap-y-3 sm:grid-cols-2">
+          <div className="mt-2 grid items-start gap-x-4 gap-y-3 sm:grid-cols-2">
             <Field
               label="Affected page or feature"
               hint="Optional. For example: Check in, the Calendar or the Roster."
@@ -281,6 +284,7 @@ export function FeedbackScreen() {
                 maxLength={MAX_AFFECTED}
                 placeholder="Check in"
                 autoComplete="off"
+                className="feedback-control"
               />
             </Field>
 
@@ -301,16 +305,22 @@ export function FeedbackScreen() {
                 maxLength={254}
                 placeholder="you@example.com"
                 autoComplete="email"
+                className="feedback-control"
               />
             </Field>
           </div>
 
           {accountEmail ? (
-            <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5">
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5 border-t border-[var(--cue-line-strong)] pt-3">
               <span className="type-meta min-w-0">
                 Signed in as <span className="break-all">{accountEmail}</span>
               </span>
-              {usingAccountEmail ? null : (
+              {usingAccountEmail ? (
+                <span className="type-meta inline-flex items-center gap-1 font-semibold text-[var(--cue-leaf)]">
+                  <Check aria-hidden="true" className="h-3.5 w-3.5" />
+                  Using it
+                </span>
+              ) : (
                 <Button size="sm" variant="secondary" onClick={() => setEmail(accountEmail)}>
                   Use my account email
                 </Button>
@@ -318,30 +328,29 @@ export function FeedbackScreen() {
             </div>
           ) : null}
 
-              <div className="flex flex-wrap items-center gap-3 border-t border-[var(--cue-line)] pt-4">
+          <div className="mt-5 flex flex-col gap-3 border-t-2 border-[var(--cue-ink)] pt-4 sm:flex-row sm:items-center">
             <Button
               type="submit"
               size="lg"
               loading={submitting}
               icon={<Send className="h-4 w-4" />}
+              className="feedback-submit w-full sm:w-auto"
             >
               Send feedback
             </Button>
             <p className="type-meta min-w-0 flex-1">
               Nothing here is visible to other students, teachers or program
               administrators.
-                </p>
-              </div>
-            </div>
+            </p>
           </div>
         </form>
 
         <aside
           aria-label="What happens next"
-          className="cue-card space-y-3 rounded-[var(--radius-panel)] p-4 sm:p-5"
+          className="mt-6 border border-[var(--cue-line)] bg-[var(--cue-panel)] p-4 shadow-[3px_3px_0_var(--cue-gold)] sm:p-5"
         >
           <SectionTitle>What happens next</SectionTitle>
-          <ul className="grid gap-3 sm:grid-cols-3">
+          <ul className="mt-3 grid gap-3 sm:grid-cols-3">
             {[
               "The site owner reads every message. It is not posted anywhere, and it does not go to your director.",
               "Your contact email is required so the owner can reply. It is never shown to other students, teachers or program administrators.",
@@ -356,7 +365,7 @@ export function FeedbackScreen() {
               </li>
             ))}
           </ul>
-          <p className="type-meta border-t border-[var(--cue-line)] pt-3">
+          <p className="type-meta mt-3 border-t border-[var(--cue-line)] pt-3">
             This form is for feedback about the website itself. For something about
             a rehearsal, a performance or your attendance, talk to your director.
           </p>

@@ -155,6 +155,29 @@ stays inside these limits:
   asserts on the readback: coverage, palette variety, vertex-shader motion, the
   calm fade, the pointer push, the click burst and its expiry.
 
+## Feedback form exception: the noticeboard
+
+`/feedback` alone may draw its form — and its success panel — as a printed
+notice: a 2px `--cue-ink` rule, `--cue-raised` paper and a hard 6px offset
+shadow, with 3px offsets on the controls. It is the treatment the owner asked
+for from a uiverse.io reference ("From Uiverse.io by ayyjayy2"), adapted to this
+palette. Every value is an existing token.
+
+Rules:
+
+- **One screen.** `.feedback-sheet` is used on the feedback form and its success
+  state only. No other screen gains a second elevation vocabulary.
+- **Hard, not soft.** The shadow is a solid offset in `--cue-ink` — never a
+  blur, gradient or glow. Dark mode follows the same token, so the offset becomes
+  light on the dark panel instead of disappearing.
+- **Controls keep their semantics.** Inputs, the textarea and the category
+  choices keep their labels, 44px targets and the shared focus ring; selection
+  is still `aria-pressed`, and the offset turns leaf green when a control is
+  selected or focused.
+- **The press is the only movement.** Pressing a choice or the submit button
+  translates it by 2px and collapses its shadow, in the same spirit as
+  `motion-press`. Reduced motion removes the transition, not the state.
+
 ## Page treatments (personal background)
 
 Account settings → Preferences offers four page treatments, stored per person in

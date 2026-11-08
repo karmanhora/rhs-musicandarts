@@ -630,6 +630,102 @@ a[href] {
   background: var(--cue-panel);
 }
 
+/* --------------------------------------------------------------------------
+ * The feedback form's noticeboard treatment
+ *
+ * The owner asked for the hard-edged form posted on uiverse.io ("From Uiverse.io
+ * by ayyjayy2"), adapted to this palette instead of its blue and beige. A warm
+ * panel, a 2px ink rule and a hard offset shadow: the one place in the app where
+ * elevation is a printed offset rather than a quiet lift. Every value is an
+ * existing token, so both themes and a program palette follow. The exception is
+ * documented in docs/DESIGN_SYSTEM.md.
+ * ------------------------------------------------------------------------ */
+
+.feedback-sheet {
+  border: 2px solid var(--cue-ink);
+  border-radius: var(--radius-panel);
+  background: var(--cue-raised);
+  box-shadow: 6px 6px 0 var(--cue-ink);
+}
+
+.feedback-sheet--success {
+  background: var(--cue-leaf-soft);
+}
+
+/* Controls replace the shared hairline with the same 2px rule and a smaller
+ * offset, so a field reads as pressed into the panel. Unlayered on purpose: it
+ * then beats the control utilities regardless of Tailwind's class order. */
+.feedback-sheet .feedback-control {
+  border: 2px solid var(--cue-ink);
+  border-radius: 6px;
+  background: var(--cue-panel);
+  box-shadow: 3px 3px 0 var(--cue-ink);
+  transition:
+    border-color var(--motion-short) var(--ease-standard),
+    box-shadow var(--motion-short) var(--ease-standard);
+}
+
+.feedback-sheet .feedback-control:focus-visible {
+  border-color: var(--cue-leaf);
+  box-shadow: 3px 3px 0 var(--cue-leaf);
+}
+
+.feedback-sheet .feedback-choice {
+  border: 2px solid var(--cue-ink);
+  border-radius: 6px;
+  background: var(--cue-panel);
+  box-shadow: 3px 3px 0 var(--cue-ink);
+  transition:
+    background-color var(--motion-short) var(--ease-standard),
+    border-color var(--motion-short) var(--ease-standard),
+    box-shadow var(--motion-short) var(--ease-standard),
+    transform var(--motion-short) var(--ease-standard);
+}
+
+.feedback-sheet .feedback-choice:hover {
+  background: var(--cue-page);
+}
+
+.feedback-sheet .feedback-choice:active {
+  transform: translate(2px, 2px);
+  box-shadow: 1px 1px 0 var(--cue-ink);
+}
+
+.feedback-sheet .feedback-choice[aria-pressed="true"] {
+  border-color: var(--cue-leaf);
+  background: var(--cue-leaf-soft);
+  box-shadow: 3px 3px 0 var(--cue-leaf);
+}
+
+.feedback-sheet .feedback-submit {
+  border: 2px solid var(--cue-ink);
+  border-radius: 6px;
+  background: var(--cue-gold);
+  color: var(--cue-gold-ink);
+  box-shadow: 4px 4px 0 var(--cue-ink);
+  transition:
+    background-color var(--motion-short) var(--ease-standard),
+    box-shadow var(--motion-short) var(--ease-standard),
+    transform var(--motion-short) var(--ease-standard);
+}
+
+.feedback-sheet .feedback-submit:hover:not(:disabled) {
+  background: var(--cue-gold-soft);
+}
+
+.feedback-sheet .feedback-submit:active:not(:disabled) {
+  transform: translate(2px, 2px);
+  box-shadow: 1px 1px 0 var(--cue-ink);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .feedback-sheet .feedback-control,
+  .feedback-sheet .feedback-choice,
+  .feedback-sheet .feedback-submit {
+    transition: none;
+  }
+}
+
 /* A group of rows that share one panel: the list, not the card, is the unit. */
 .cue-list > * + * {
   border-top: 1px solid var(--cue-line);
