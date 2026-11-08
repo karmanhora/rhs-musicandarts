@@ -42,9 +42,9 @@ const CATEGORY_ICON: Record<FeedbackCategory, typeof Bug> = {
  * `/feedback` — the form every member can use to tell the site owner what is
  * working and what is not.
  *
- * It collects the least it can: a category, the message, and two optional
- * fields. The contact email is offered from the signed-in account but never
- * filled in automatically, so sending anonymously stays the default.
+ * It collects the least it can: a category, the message, an optional affected
+ * page, and a contact address so the owner can reply. The address is offered
+ * from the signed-in account but never filled in automatically.
  *
  * The screen does not read or write any table directly. `submitFeedback()`
  * calls the server, which decides everything that matters (who sent it, whether
@@ -85,8 +85,10 @@ export function FeedbackScreen() {
     }
 
     const address = email.trim();
-    if (address && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(address)) {
-      next.email = "That doesn't look like an email address. You can also leave it blank.";
+    if (!address) {
+      next.email = "Add an email address so the owner can reply.";
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(address)) {
+      next.email = "That doesn't look like an email address.";
     }
 
     setErrors(next);
@@ -107,7 +109,7 @@ export function FeedbackScreen() {
       category: category!,
       message: message.trim(),
       affectedFeature: affected.trim() || null,
-      contactEmail: email.trim() || null,
+      contactEmail: email.trim(),
     });
 
     setSubmitting(false);
@@ -148,8 +150,8 @@ export function FeedbackScreen() {
           </span>
           <h2 className="type-heading mt-4">We&rsquo;ve got it.</h2>
           <p className="mt-1.5 max-w-md text-sm leading-relaxed text-[var(--cue-muted)]">
-            Every message is read by the owner of the site. If you left a contact
-            address, it may be used to ask a follow-up question — no reply is
+            Every message is read by the owner of the site. The address you
+            provided may be used to ask a follow-up question — no reply is
             promised, and nothing is shared with anybody else.
           </p>
           <div className="mt-6 flex flex-wrap gap-2">
@@ -285,11 +287,12 @@ export function FeedbackScreen() {
             <Field
               label="Contact email"
               error={errors.email}
-              hint="Optional. Only if you would like a reply — leave it blank to stay anonymous."
+              hint="Required so the owner can reply. Never shown to other members."
             >
               <Input
                 type="email"
                 inputMode="email"
+                required
                 value={email}
                 onChange={(event) => {
                   setEmail(event.target.value);
@@ -307,11 +310,7 @@ export function FeedbackScreen() {
               <span className="type-meta min-w-0">
                 Signed in as <span className="break-all">{accountEmail}</span>
               </span>
-              {usingAccountEmail ? (
-                <Button size="sm" variant="ghost" onClick={() => setEmail("")}>
-                  Don&rsquo;t include it
-                </Button>
-              ) : (
+              {usingAccountEmail ? null : (
                 <Button size="sm" variant="secondary" onClick={() => setEmail(accountEmail)}>
                   Use my account email
                 </Button>
@@ -345,7 +344,7 @@ export function FeedbackScreen() {
           <ul className="grid gap-3 sm:grid-cols-3">
             {[
               "The site owner reads every message. It is not posted anywhere, and it does not go to your director.",
-              "A contact address is optional. Without one the message is still delivered — you just cannot be asked a follow-up question.",
+              "Your contact email is required so the owner can reply. It is never shown to other students, teachers or program administrators.",
               "Bug reports and requests are triaged from a private inbox, so the same idea twice is easier to act on than a scattered note.",
             ].map((line) => (
               <li key={line} className="flex gap-2.5 text-sm leading-relaxed text-[var(--cue-muted)]">

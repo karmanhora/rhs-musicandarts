@@ -882,20 +882,22 @@ export async function setMyPreferences(patch: {
  * Send one feedback message to the site owner.
  *
  * The RPC is the only insert path: it derives `submitted_by` from the token,
- * validates the category and lengths, refuses an immediate repeat and a burst,
- * and stores nothing when any check fails. The browser never names a profile.
+ * validates the category, lengths and required contact address, refuses an
+ * immediate repeat and a burst, and stores nothing when any check fails. The
+ * browser never names a profile.
  */
 export const submitFeedback = (input: {
   category: FeedbackCategory;
   message: string;
   affectedFeature?: string | null;
-  contactEmail?: string | null;
+  /** Required: the owner needs an address to answer. */
+  contactEmail: string;
 }) =>
   callRpc("submit_feedback", {
     p_category: input.category,
     p_message: input.message,
     p_affected_feature: input.affectedFeature?.trim() || null,
-    p_contact_email: input.contactEmail?.trim() || null,
+    p_contact_email: input.contactEmail.trim(),
   });
 
 /** Owner only: move one submission between new, reviewing and resolved. */

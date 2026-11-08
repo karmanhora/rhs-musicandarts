@@ -202,7 +202,8 @@ begin
   v := public.submit_feedback(
     p_category => 'feature',
     p_message => 'It would help to see next week at a glance on the home screen.',
-    p_affected_feature => 'Home'
+    p_affected_feature => 'Home',
+    p_contact_email => 'feedback.teacher@example.org'
   );
   perform public.feedback_assert(v->>'ok' = 'true', 'B1 a teacher can send feedback');
   perform public.feedback_assert(v->>'owner' is null, 'B2 the submit response carries no owner claim');
@@ -249,7 +250,8 @@ begin
   v := public.submit_feedback(
     p_category => 'suggestion',
     p_message => 'The calendar could label the program name on each event.',
-    p_affected_feature => 'Calendar'
+    p_affected_feature => 'Calendar',
+    p_contact_email => 'feedback.admin@example.org'
   );
   perform public.feedback_assert(v->>'ok' = 'true', 'C2 an administrator may send feedback like anybody else');
 
@@ -422,11 +424,29 @@ begin
   );
   perform public.feedback_assert(v->>'ok' = 'false', 'E8 an over-long contact email is refused');
 
+  v := public.submit_feedback('bug', 'A message long enough to pass the length check.');
+  perform public.feedback_assert(v->>'ok' = 'false', 'E9 a missing contact email is refused');
+
+  v := public.submit_feedback(
+    'bug', 'A message long enough to pass the length check.', null, '   '
+  );
+  perform public.feedback_assert(v->>'ok' = 'false', 'E10 a blank contact email is refused');
+
   reset role;
+
+  -- The table itself refuses a new row without an address, even when the
+  -- function is bypassed. Historical NULLs are allowed by NOT VALID.
+  begin
+    insert into public.feedback_submissions (category, message, submitted_by)
+    values ('bug', 'A message long enough to pass the length check.',
+            'fbfbfbfb-0000-4000-8000-000000000002');
+    raise exception 'FAIL: E11 a row without a contact email was accepted';
+  exception when check_violation then null;
+  end;
 
   select count(*) into v_after from public.feedback_submissions;
   perform public.feedback_assert(v_after = v_before,
-    format('E9 refusals wrote nothing (%s before, %s after)', v_before, v_after));
+    format('E12 refusals wrote nothing (%s before, %s after)', v_before, v_after));
 end
 $$;
 
@@ -446,10 +466,14 @@ begin
   );
   set role authenticated;
 
-  v := public.submit_feedback('other', 'The same message sent twice by one person.');
+  v := public.submit_feedback(
+    'other', 'The same message sent twice by one person.', null, 'feedback.noise@example.org'
+  );
   perform public.feedback_assert(v->>'ok' = 'true', 'F1 the first message is accepted');
 
-  v := public.submit_feedback('other', 'The same message sent twice by one person.');
+  v := public.submit_feedback(
+    'other', 'The same message sent twice by one person.', null, 'feedback.noise@example.org'
+  );
   perform public.feedback_assert(v->>'ok' = 'false',
     'F2 an exact repeat inside ten minutes is refused');
   perform public.feedback_assert(position('already sent' in v->>'message') > 0,
@@ -457,16 +481,25 @@ begin
 
   -- Case and surrounding whitespace do not make it a new report: a retried
   -- request must not create a second row.
-  v := public.submit_feedback('other', '  THE SAME MESSAGE SENT TWICE BY ONE PERSON.  ');
+  v := public.submit_feedback(
+    'other', '  THE SAME MESSAGE SENT TWICE BY ONE PERSON.  ', null, 'feedback.noise@example.org'
+  );
   perform public.feedback_assert(v->>'ok' = 'false', 'F4 a case/space variant is still the duplicate');
 
   for i in 2..5 loop
-    v := public.submit_feedback('other', format('A distinct follow-up message number %s.', i));
+    v := public.submit_feedback(
+      'other',
+      format('A distinct follow-up message number %s.', i),
+      null,
+      format('feedback.noise+%s@example.org', i)
+    );
     perform public.feedback_assert(v->>'ok' = 'true',
       format('F5 message %s of the allowed five is accepted', i));
   end loop;
 
-  v := public.submit_feedback('other', 'A sixth message inside the same ten minutes.');
+  v := public.submit_feedback(
+    'other', 'A sixth message inside the same ten minutes.', null, 'feedback.noise@example.org'
+  );
   perform public.feedback_assert(v->>'ok' = 'false', 'F6 a sixth message in ten minutes is refused');
   perform public.feedback_assert(position('wait' in v->>'message') > 0,
     'F7 the burst refusal asks them to wait');

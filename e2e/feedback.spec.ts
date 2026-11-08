@@ -91,6 +91,7 @@ test.describe("feedback", () => {
     await expect(
       page.getByText("Tell us what happened, or what you would like to see.")
     ).toBeVisible();
+    await expect(page.getByText("Add an email address so the owner can reply.")).toBeVisible();
 
     await page.getByRole("button", { name: /Bug Report/ }).click();
     await page
@@ -100,9 +101,13 @@ test.describe("feedback", () => {
     await page.getByRole("button", { name: "Send feedback" }).click();
     await expect(page.getByText(/doesn't look like an email address/i)).toBeVisible();
 
-    // The address is optional: clearing it sends, and the form is replaced by
-    // the confirmation rather than left half-filled.
+    // The address is required now: clearing it is refused, and only a valid
+    // one replaces the form with the confirmation.
     await page.getByLabel("Contact email").fill("");
+    await page.getByRole("button", { name: "Send feedback" }).click();
+    await expect(page.getByText("Add an email address so the owner can reply.")).toBeVisible();
+
+    await page.getByLabel("Contact email").fill("student@example.org");
     await page.getByRole("button", { name: "Send feedback" }).click();
     await expect(page.getByText(/ve got it/i)).toBeVisible();
     await expect(page.getByRole("button", { name: "Send more feedback" })).toBeVisible();
