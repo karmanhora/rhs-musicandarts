@@ -39,7 +39,7 @@ const byName = (a: SwitchableProgram, b: SwitchableProgram) =>
  * rearranging programs.
  *
  * Creating one does not put the administrator on its roster: those RPCs write
- * no membership for a `program_admins` account (migration 20261108120000),
+ * no membership for a `program_admins` account (migration 20261108032109),
  * because that account already holds every capability in every program. The
  * administrator stays invisible on the roster and keeps full access.
  */

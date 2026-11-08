@@ -16,7 +16,7 @@ import { APP_NAME, ORG_NAME } from "../lib/constants";
  * a subject had nobody to ask and no way to use the app at all. This is the door
  * that does not need anybody: name a program, and `create_program()` makes the
  * caller its director. A system administrator is the exception — they keep every
- * capability and are not added to the new roster (migration 20261108120000). The
+ * capability and are not added to the new roster (migration 20261108032109). The
  * roster, attendance and live check-in tools are ready the moment it exists, and
  * it starts **closed** — with its own join code for the director to hand out.
  *

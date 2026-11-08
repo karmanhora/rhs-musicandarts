@@ -387,7 +387,7 @@ Migration 031 changes shape in two ways —
   rearrange programs — the database refuses it, not just the hidden screen.
   Creating one does not put the administrator on its roster: no membership is
   written for a `program_admins` account
-  ([20261108120000_system_admin_off_rosters.sql](../supabase/migrations/20261108120000_system_admin_off_rosters.sql)),
+  ([20261108032109_system_admin_off_rosters.sql](../supabase/migrations/20261108032109_system_admin_off_rosters.sql)),
   and the membership rows earlier creations left on administrator accounts were
   removed there. The account keeps every capability through `is_program_admin()`.
   The app's *Programs & teams* screen (`/programs`, behind `system.manage`) is
