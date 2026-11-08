@@ -166,18 +166,18 @@ export function FeedbackScreen() {
   }
 
   return (
-    <main className="safe-b mx-auto w-full max-w-3xl px-4 py-6 sm:px-6">
+    <main className="safe-b mx-auto w-full max-w-4xl px-4 py-6 sm:px-6">
       <PageHeader
         kicker="Feedback"
         title="Tell us what you think"
         note="Found a bug, want a feature, or have an idea? This goes straight to the site owner — not to your program's roster or your director."
       />
 
-      <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1.55fr)_minmax(0,1fr)]">
+      <div className="mt-6">
         <form
           onSubmit={(event) => void handleSubmit(event)}
           noValidate
-          className="cue-card rounded-[var(--radius-panel)] p-4 sm:p-6"
+          className="cue-card mx-auto w-full rounded-[var(--radius-panel)] p-4 sm:p-6"
         >
           {submitError ? (
             <Alert tone="error" className="mb-5">
@@ -185,11 +185,12 @@ export function FeedbackScreen() {
             </Alert>
           ) : null}
 
-          <fieldset>
+          <div className="grid gap-6 lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.35fr)]">
+            <fieldset className="min-w-0">
             <legend className="mb-1.5 block text-[0.8125rem] font-semibold text-[var(--cue-ink)]">
               What kind of feedback is this?
             </legend>
-            <div className="grid gap-2 sm:grid-cols-2">
+            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-1">
               {FEEDBACK_CATEGORIES.map((option) => {
                 const Icon = CATEGORY_ICON[option.value];
                 const active = category === option.value;
@@ -235,9 +236,10 @@ export function FeedbackScreen() {
                 {errors.category}
               </p>
             ) : null}
-          </fieldset>
+            </fieldset>
 
-          <div className="mt-5">
+            <div className="min-w-0 space-y-4">
+              <div>
             <Field
               label="What would you like us to know?"
               error={errors.message}
@@ -263,10 +265,10 @@ export function FeedbackScreen() {
               )}
             >
               {message.length.toLocaleString()} / {MAX_MESSAGE.toLocaleString()}
-            </p>
-          </div>
+              </p>
+            </div>
 
-          <div className="mt-4 grid items-start gap-x-4 gap-y-3 sm:grid-cols-2">
+            <div className="grid items-start gap-x-4 gap-y-3 sm:grid-cols-2">
             <Field
               label="Affected page or feature"
               hint="Optional. For example: Check in, the Calendar or the Roster."
@@ -301,7 +303,7 @@ export function FeedbackScreen() {
           </div>
 
           {accountEmail ? (
-            <div className="mt-3 flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5">
+            <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5">
               <span className="type-meta min-w-0">
                 Signed in as <span className="break-all">{accountEmail}</span>
               </span>
@@ -317,7 +319,7 @@ export function FeedbackScreen() {
             </div>
           ) : null}
 
-          <div className="mt-6 flex flex-wrap items-center gap-3 border-t border-[var(--cue-line)] pt-4">
+              <div className="flex flex-wrap items-center gap-3 border-t border-[var(--cue-line)] pt-4">
             <Button
               type="submit"
               size="lg"
@@ -329,13 +331,18 @@ export function FeedbackScreen() {
             <p className="type-meta min-w-0 flex-1">
               Nothing here is visible to other students, teachers or program
               administrators.
-            </p>
+                </p>
+              </div>
+            </div>
           </div>
         </form>
 
-        <aside aria-label="What happens next" className="space-y-3">
+        <aside
+          aria-label="What happens next"
+          className="cue-card space-y-3 rounded-[var(--radius-panel)] p-4 sm:p-5"
+        >
           <SectionTitle>What happens next</SectionTitle>
-          <ul className="space-y-3">
+          <ul className="grid gap-3 sm:grid-cols-3">
             {[
               "The site owner reads every message. It is not posted anywhere, and it does not go to your director.",
               "A contact address is optional. Without one the message is still delivered — you just cannot be asked a follow-up question.",

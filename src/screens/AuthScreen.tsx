@@ -3,6 +3,7 @@ import type { FormEvent, ReactNode } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { ArrowLeft, KeyRound, MailCheck } from "lucide-react";
 import { Alert, Button, Field, Input, SegmentedControl, useToast } from "../components/ui";
+import { GoogleMark } from "../components/GoogleMark";
 import { APP_NAME, readAuthAudience, writeAuthAudience } from "../lib/constants";
 import type { AuthAudience } from "../lib/constants";
 import { useAuth } from "../hooks/useAuth";
@@ -578,6 +579,7 @@ export function AuthScreen({ mode }: { mode: AuthMode }) {
             block
             variant="secondary"
             loading={busy}
+            icon={<GoogleMark className="h-[18px] w-[18px]" />}
             onClick={() => void continueWithGoogle()}
           >
             Continue with Google
