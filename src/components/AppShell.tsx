@@ -33,6 +33,7 @@ import { NotificationCenter } from "./NotificationCenter";
 import {
   Alert,
   Avatar,
+  Badge,
   Button,
   IconButton,
   List,
@@ -465,7 +466,21 @@ function AccountSheet({
               icon={<Inbox className="h-4 w-4" />}
               title="Feedback inbox"
               subtitle="Read and triage what people have sent"
-              trailing={<ChevronRight aria-hidden="true" className="h-4 w-4 text-[var(--cue-subtle)]" />}
+              trailing={
+                <span className="flex items-center gap-2">
+                  {feedbackOwner.newCount && feedbackOwner.newCount > 0 ? (
+                    <Badge className="bg-[var(--cue-gold)] text-[var(--cue-forest)]">
+                      {feedbackOwner.newCount > 99
+                        ? "99+ new"
+                        : `${feedbackOwner.newCount} new`}
+                    </Badge>
+                  ) : null}
+                  <ChevronRight
+                    aria-hidden="true"
+                    className="h-4 w-4 text-[var(--cue-subtle)]"
+                  />
+                </span>
+              }
               onClick={() => go("/feedback/inbox")}
             />
           ) : null}

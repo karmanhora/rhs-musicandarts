@@ -307,7 +307,8 @@ export type NotificationType =
   | "absence_decision"
   | "event_changed"
   | "event_cancelled"
-  | "workflow_failed";
+  | "workflow_failed"
+  | "feedback_received";
 
 /**
  * The caller's own teacher-credential state (migration 035), as the screens read
@@ -363,6 +364,8 @@ export interface NotificationRow {
     event_id?: string;
     event_name?: string;
     request_id?: string;
+    feedback_id?: string;
+    category?: string;
   } | null;
   read: boolean;
   created_at: string;

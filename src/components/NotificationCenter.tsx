@@ -18,6 +18,7 @@ import { relativeDay } from "../lib/date";
  */
 export function notificationTarget(n: NotificationRow): string {
   if (n.type === "absence_request" || n.type === "absence_decision") return "/absences";
+  if (n.type === "feedback_received") return "/feedback/inbox";
   if (n.type === "workflow_failed") return "/attendance";
   if (n.payload?.event_id) return "/calendar";
   return "/";

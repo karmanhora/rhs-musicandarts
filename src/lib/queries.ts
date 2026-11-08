@@ -384,6 +384,29 @@ export async function fetchFeedbackSubmissions(): Promise<{
 }
 
 /**
+ * How many submissions still say `new` — the badge on the owner's inbox row.
+ *
+ * One `head` count, and RLS scopes it: the only SELECT policy on the table is
+ * the owner's, so anyone else asking PostgREST directly counts zero rows. The
+ * error is returned so the badge can stay absent rather than claim an empty
+ * inbox during an outage; the inbox screen still shows the failure itself.
+ */
+export async function fetchNewFeedbackCount(): Promise<{
+  count: number;
+  error: string | null;
+}> {
+  const { count, error } = await supabase
+    .from("feedback_submissions")
+    .select("id", { count: "exact", head: true })
+    .eq("status", "new");
+
+  return {
+    count: count ?? 0,
+    error: error ? error.message : null,
+  };
+}
+
+/**
  * Update my own profile. RLS limits this to rows the caller may write, and the
  * `profiles_guard_self_update` trigger still refuses a change to `deactivated`
  * (the one column that is not self-service) — so nothing here is trusted merely

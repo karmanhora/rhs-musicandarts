@@ -15,6 +15,7 @@
 --   E  invalid input is refused and writes nothing
 --   F  a duplicate is refused, and a burst is rate-limited
 --   G  an unconfirmed owner address is not the owner; anon holds no privilege
+--   H  every stored message writes one unread notification to the owner alone
 --
 -- Every fixture is fictional and the whole suite runs in ONE transaction that is
 -- ROLLED BACK — it never touches real records.
@@ -218,12 +219,24 @@ $$;
 
 -- ---------------------------------------------------------------------------
 -- C. Program administrator: authority elsewhere is authority nowhere here
+--
+-- The administrator holds the strongest cross-program grant in the schema.
+-- This section hands it a REAL row id, captured as the suite's own role before
+-- the switch, and proves every path refuses: the table read, the status
+-- function, the delete function, and hand-written UPDATE/DELETE statements.
 -- ---------------------------------------------------------------------------
 do $$
 declare
   v jsonb;
   v_rows int;
+  v_id uuid;
+  v_status text;
 begin
+  -- Captured before `set role`: the administrator below cannot read it, which
+  -- is what makes the management attempts meaningful rather than a null id.
+  select id into v_id from public.feedback_submissions order by created_at limit 1;
+  perform public.feedback_assert(v_id is not null, 'C0 a submission exists to try to manage');
+
   perform set_config(
     'request.jwt.claims',
     '{"sub":"11111111-1111-4111-8111-444444444444","role":"authenticated"}',
@@ -247,20 +260,36 @@ begin
   perform public.feedback_assert(v->>'owner' = 'false',
     'C4 system-administrator authority does not make somebody the feedback owner');
 
-  v := public.set_feedback_status(
-    (select id from public.feedback_submissions limit 1),
-    'resolved'
-  );
+  v := public.set_feedback_status(v_id, 'resolved');
   perform public.feedback_assert(v->>'ok' = 'false',
-    'C5 an administrator cannot manage statuses');
+    'C5 an administrator cannot manage a real submission''s status');
 
-  v := public.delete_feedback(
-    (select id from public.feedback_submissions limit 1)
-  );
+  v := public.delete_feedback(v_id);
   perform public.feedback_assert(v->>'ok' = 'false',
-    'C6 an administrator cannot delete feedback');
+    'C6 an administrator cannot delete a real submission');
+
+  -- There is no UPDATE grant at all, so a hand-written statement must fail at
+  -- the privilege check rather than quietly update zero rows.
+  begin
+    update public.feedback_submissions set status = 'resolved' where id = v_id;
+    perform public.feedback_assert(false, 'C7 an administrator cannot update feedback directly');
+  exception when insufficient_privilege then
+    null;
+  end;
+
+  begin
+    delete from public.feedback_submissions where id = v_id;
+    perform public.feedback_assert(false, 'C8 an administrator cannot delete feedback directly');
+  exception when insufficient_privilege then
+    null;
+  end;
 
   reset role;
+
+  select status into v_status from public.feedback_submissions where id = v_id;
+  perform public.feedback_assert(v_status = 'new', 'C9 the refused calls changed nothing');
+  select count(*) into v_rows from public.feedback_submissions;
+  perform public.feedback_assert(v_rows = 3, 'C10 every submission is still there');
 end
 $$;
 
@@ -517,6 +546,76 @@ begin
     and not has_table_privilege('authenticated', 'public.feedback_submissions', 'DELETE'),
     'G9 authenticated holds no direct write grant'
   );
+end
+$$;
+
+-- ---------------------------------------------------------------------------
+-- H. Every stored message reaches the owner's bell, and nobody else's
+-- ---------------------------------------------------------------------------
+do $$
+declare
+  v_owner   uuid;
+  v_n       int;
+  v_missing int;
+begin
+  reset role;
+  perform set_config('request.jwt.claims', '{}', true);
+
+  select p.id into v_owner
+    from auth.users u
+    join public.profiles p on p.auth_user_id = u.id::text
+   where lower(u.email) = 'lebronyuh64@gmail.com'
+   limit 1;
+  perform public.feedback_assert(v_owner is not null, 'H1 the owner profile resolves');
+
+  -- Every row that is still stored produced one notification naming its id.
+  select count(*) into v_missing
+    from public.feedback_submissions f
+   where not exists (
+     select 1 from public.notifications n
+      where n.user_id = v_owner
+        and n.type = 'feedback_received'
+        and n.payload->>'feedback_id' = f.id::text
+   );
+  perform public.feedback_assert(v_missing = 0,
+    format('H2 every submission notified the owner (%s missing)', v_missing));
+
+  -- The copy names the kind, points at the row, and starts unread.
+  select count(*) into v_n
+    from public.notifications n
+    join public.feedback_submissions f on f.id::text = n.payload->>'feedback_id'
+   where n.type = 'feedback_received'
+     and n.user_id = v_owner
+     and n.title = 'New feedback received'
+     and n.payload->>'category' = f.category
+     and not n.read;
+  select count(*) into v_missing from public.feedback_submissions;
+  perform public.feedback_assert(v_n = v_missing,
+    format('H3 every notification is titled, categorized and unread (%s of %s)', v_n, v_missing));
+
+  -- The sender must not be able to read the owner's bell.
+  perform set_config(
+    'request.jwt.claims',
+    '{"sub":"11111111-1111-4111-8111-555555555555","role":"authenticated"}',
+    true
+  );
+  set role authenticated;
+  select count(*) into v_n from public.notifications where type = 'feedback_received';
+  perform public.feedback_assert(v_n = 0,
+    'H4 a sender cannot read the owner''s feedback notification');
+  reset role;
+
+  -- The owner can, and the bell's unread count is therefore real.
+  perform set_config(
+    'request.jwt.claims',
+    format('{"sub":"%s","role":"authenticated"}', public.feedback_owner_auth_uid()),
+    true
+  );
+  set role authenticated;
+  select count(*) into v_n from public.notifications where type = 'feedback_received';
+  perform public.feedback_assert(v_n >= 7,
+    format('H5 the owner reads every notification (%s)', v_n));
+  reset role;
 end
 $$;
 

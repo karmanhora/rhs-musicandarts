@@ -266,10 +266,10 @@ export function FeedbackScreen() {
             </p>
           </div>
 
-          <div className="mt-4 grid gap-4 sm:grid-cols-2">
+          <div className="mt-4 grid items-start gap-x-4 gap-y-3 sm:grid-cols-2">
             <Field
-              label="Affected page or feature (optional)"
-              hint="For example: Check in, the Calendar, or the Roster."
+              label="Affected page or feature"
+              hint="Optional. For example: Check in, the Calendar or the Roster."
             >
               <Input
                 value={affected}
@@ -281,9 +281,9 @@ export function FeedbackScreen() {
             </Field>
 
             <Field
-              label="Contact email (optional)"
+              label="Contact email"
               error={errors.email}
-              hint="Only if you would like a reply. Leave it blank to stay anonymous."
+              hint="Optional. Only if you would like a reply — leave it blank to stay anonymous."
             >
               <Input
                 type="email"
@@ -301,7 +301,7 @@ export function FeedbackScreen() {
           </div>
 
           {accountEmail ? (
-            <div className="mt-2 flex flex-wrap items-center gap-2">
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5">
               <span className="type-meta min-w-0">
                 Signed in as <span className="break-all">{accountEmail}</span>
               </span>

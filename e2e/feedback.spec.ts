@@ -96,13 +96,13 @@ test.describe("feedback", () => {
     await page
       .getByLabel("What would you like us to know?")
       .fill("The roster page shows a blank section on my phone.");
-    await page.getByLabel("Contact email (optional)").fill("not-an-email");
+    await page.getByLabel("Contact email").fill("not-an-email");
     await page.getByRole("button", { name: "Send feedback" }).click();
     await expect(page.getByText(/doesn't look like an email address/i)).toBeVisible();
 
     // The address is optional: clearing it sends, and the form is replaced by
     // the confirmation rather than left half-filled.
-    await page.getByLabel("Contact email (optional)").fill("");
+    await page.getByLabel("Contact email").fill("");
     await page.getByRole("button", { name: "Send feedback" }).click();
     await expect(page.getByText(/ve got it/i)).toBeVisible();
     await expect(page.getByRole("button", { name: "Send more feedback" })).toBeVisible();
@@ -156,6 +156,41 @@ test.describe("feedback", () => {
     await confirm.getByRole("button", { name: "Delete", exact: true }).click();
     await expect(confirm).toBeHidden();
     await expect(page.getByText(/check-in button does nothing/)).toHaveCount(0);
+  });
+
+  test("the owner's inbox entry counts what is still new", async ({ page }) => {
+    await installMocks(page, true);
+    await mockOwnerInbox(page);
+    // PostgREST answers a `head` count with an empty body and content-range.
+    await page.route(/\/rest\/v1\/feedback_submissions\?select=id/, (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        headers: {
+          "access-control-allow-origin": "*",
+          // Without this the browser hides content-range and the count is null.
+          "access-control-expose-headers": "content-range",
+          "content-range": "0-0/1",
+        },
+        body: "[]",
+      })
+    );
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    // The account sheet lives on every signed-in route; use the light feedback
+    // screen rather than Home, whose lazy chunk is the slow one on a cold server.
+    await page.goto("/feedback");
+    await expect(
+      page.getByRole("heading", { level: 1, name: "Tell us what you think" })
+    ).toBeVisible({ timeout: 60_000 });
+
+    const accountButton = page.getByRole("button", { name: /Your account/ });
+    await expect(accountButton).toBeVisible({ timeout: 60_000 });
+    await accountButton.click();
+
+    const sheet = page.getByRole("dialog", { name: "Your account" });
+    await expect(sheet.getByText("Feedback inbox")).toBeVisible({ timeout: 60_000 });
+    await expect(sheet.getByText("1 new")).toBeVisible();
   });
 
   test("neither screen overflows at phone, tablet or desktop width", async ({ page }) => {
