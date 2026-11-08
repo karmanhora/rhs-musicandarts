@@ -127,7 +127,7 @@ export function ProfileScreen() {
   }, [load]);
 
   async function changeProgramStatus() {
-    if (!programId || !app.isDirector || !app.program) return;
+    if (!programId || !app.program || !(app.isDirector || app.isSystemAdmin)) return;
     setUpdatingProgramStatus(true);
     const { result, error: rpcError } = await setProgramActive(programId, !app.program.active);
     setUpdatingProgramStatus(false);
@@ -387,7 +387,7 @@ export function ProfileScreen() {
                 />
               );
             })}
-            {app.isDirector && app.program ? (
+            {(app.isDirector || app.isSystemAdmin) && app.program ? (
               <Row
                 icon={
                   app.program.active ? (

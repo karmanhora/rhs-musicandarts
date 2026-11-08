@@ -84,6 +84,21 @@ export async function fetchActivePrograms(): Promise<EnsembleRow[]> {
   return (data ?? []) as unknown as EnsembleRow[];
 }
 
+/**
+ * Archived programs, for the system administrator's restore list. RLS shows an
+ * administrator every program; this is never called for a non-administrator.
+ * Throws on failure so the screen can show the error instead of an empty list.
+ */
+export async function fetchArchivedPrograms(): Promise<EnsembleRow[]> {
+  const { data, error } = await supabase
+    .from("ensembles")
+    .select("id,slug,name,short_name,theme_color,logo_url,active,program_group_id,created_at")
+    .eq("active", false)
+    .order("name");
+  if (error) throw new Error(error.message);
+  return (data ?? []) as unknown as EnsembleRow[];
+}
+
 /** Every active section. Readable by any signed-in account; only an admin writes. */
 export async function fetchProgramGroups(): Promise<ProgramGroupRow[]> {
   const { data } = await supabase

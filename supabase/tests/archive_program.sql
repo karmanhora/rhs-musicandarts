@@ -18,7 +18,11 @@ $$;
 insert into public.profiles (id, auth_user_id, full_name, display_name)
 values
   ('02600000-0000-4000-8000-000000000001', '026-director', 'Archive Director', 'Archive Director'),
-  ('02600000-0000-4000-8000-000000000002', '026-student', 'Archive Student', 'Archive Student');
+  ('02600000-0000-4000-8000-000000000002', '026-student', 'Archive Student', 'Archive Student'),
+  ('02600000-0000-4000-8000-000000000005', '026-admin', 'Archive Admin', 'Archive Admin');
+
+insert into public.program_admins (user_id)
+values ('02600000-0000-4000-8000-000000000005');
 
 insert into public.ensembles (id, slug, name)
 values ('02600000-0000-4000-8000-000000000003', 'archive-test-program', 'Archive Test Program');
@@ -93,6 +97,36 @@ do $$
 begin
   if not (select active from public.ensembles where id = '02600000-0000-4000-8000-000000000003') then
     raise exception 'FAIL: AP-6 director could not restore the program';
+  end if;
+end
+$$;
+
+-- A system administrator is not on this program's roster, but the owner asked
+-- for the administrator to be able to delete programs as well.
+select set_config(
+  'request.jwt.claims',
+  '{"sub":"026-admin","role":"authenticated"}',
+  true
+);
+select public.set_program_active('02600000-0000-4000-8000-000000000003', false);
+
+do $$
+begin
+  if (select active from public.ensembles where id = '02600000-0000-4000-8000-000000000003') then
+    raise exception 'FAIL: AP-7 administrator could not archive an off-roster program';
+  end if;
+  if not exists (select 1 from public.events where id = '02600000-0000-4000-8000-000000000004') then
+    raise exception 'FAIL: AP-8 administrator archive deleted event history';
+  end if;
+end
+$$;
+
+select public.set_program_active('02600000-0000-4000-8000-000000000003', true);
+
+do $$
+begin
+  if not (select active from public.ensembles where id = '02600000-0000-4000-8000-000000000003') then
+    raise exception 'FAIL: AP-9 administrator could not restore the program';
   end if;
 end
 $$;

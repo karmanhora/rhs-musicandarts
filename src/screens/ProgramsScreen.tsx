@@ -1,8 +1,9 @@
-import { useState } from "react";
-import { ChevronRight, Layers, Plus } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { Archive, ArchiveRestore, ChevronRight, Layers, Plus } from "lucide-react";
 import {
   Alert,
   Button,
+  ConfirmSheet,
   EmptyState,
   Field,
   Input,
@@ -16,8 +17,14 @@ import {
 } from "../components/ui";
 import { usePrograms } from "../hooks/usePrograms";
 import type { SwitchableProgram } from "../hooks/usePrograms";
-import type { ProgramGroupRow } from "../lib/types";
-import { createProgramGroup, createProgramInGroup, moveProgramToGroup } from "../lib/rpc";
+import type { EnsembleRow, ProgramGroupRow } from "../lib/types";
+import {
+  createProgramGroup,
+  createProgramInGroup,
+  moveProgramToGroup,
+  setProgramActive,
+} from "../lib/rpc";
+import { fetchArchivedPrograms } from "../lib/queries";
 
 const byName = (a: SwitchableProgram, b: SwitchableProgram) =>
   a.ensemble.name.localeCompare(b.ensemble.name);
@@ -65,6 +72,30 @@ export function ProgramsScreen() {
   const [moveTo, setMoveTo] = useState("");
   const [moveBusy, setMoveBusy] = useState(false);
   const [moveError, setMoveError] = useState<string | null>(null);
+
+  const [archived, setArchived] = useState<EnsembleRow[]>([]);
+  const [archivedError, setArchivedError] = useState<string | null>(null);
+  const [confirming, setConfirming] = useState<{
+    id: string;
+    name: string;
+    active: boolean;
+  } | null>(null);
+  const [statusBusy, setStatusBusy] = useState(false);
+
+  const loadArchived = useCallback(async () => {
+    setArchivedError(null);
+    try {
+      setArchived(await fetchArchivedPrograms());
+    } catch (error) {
+      setArchivedError(
+        error instanceof Error ? error.message : "Could not load archived programs."
+      );
+    }
+  }, []);
+
+  useEffect(() => {
+    if (app.isSystemAdmin) void loadArchived();
+  }, [app.isSystemAdmin, loadArchived]);
 
   const programsOf = (groupId: string) =>
     app.programs.filter((entry) => entry.groupId === groupId).sort(byName);
@@ -162,6 +193,23 @@ export function ProgramsScreen() {
     await app.refresh();
   }
 
+  async function updateProgramActive() {
+    if (!confirming) return;
+    const wasActive = confirming.active;
+    setStatusBusy(true);
+    const { result, error: rpcError } = await setProgramActive(confirming.id, !wasActive);
+    setStatusBusy(false);
+
+    if (rpcError || !result?.ok) {
+      toast.error(rpcError?.message || result?.message || "Could not update this program.");
+      return;
+    }
+
+    setConfirming(null);
+    toast.success(result.message ?? (wasActive ? "Program archived." : "Program restored."));
+    await Promise.all([loadArchived(), app.refresh()]);
+  }
+
   return (
     <main className="safe-b mx-auto w-full max-w-2xl px-4 py-6">
       <PageHeader
@@ -195,7 +243,7 @@ export function ProgramsScreen() {
                   key={child.id}
                   icon={<Layers className="h-4 w-4" />}
                   title={child.ensemble.name}
-                  subtitle={`In ${group.name} — tap to move it`}
+                  subtitle={`In ${group.name} — tap to move or delete`}
                   trailing={
                     <ChevronRight
                       aria-hidden="true"
@@ -226,7 +274,7 @@ export function ProgramsScreen() {
                 key={program.id}
                 icon={<Layers className="h-4 w-4" />}
                 title={program.ensemble.name}
-                subtitle="Tap to place it in a section"
+                subtitle="Tap to place it, or delete it"
                 trailing={
                   <ChevronRight
                     aria-hidden="true"
@@ -237,6 +285,34 @@ export function ProgramsScreen() {
               />
             ))}
           </List>
+        </section>
+      ) : null}
+
+      {archived.length > 0 || archivedError ? (
+        <section className="mt-6">
+          <SectionTitle className="mb-3">Archived programs</SectionTitle>
+          {archivedError ? <Alert tone="error">{archivedError}</Alert> : null}
+          {archived.length > 0 ? (
+            <List>
+              {archived.map((program) => (
+                <Row
+                  key={`archived-${program.id}`}
+                  icon={<ArchiveRestore className="h-4 w-4" />}
+                  title={program.name}
+                  subtitle="Archived — tap to restore"
+                  trailing={
+                    <ChevronRight
+                      aria-hidden="true"
+                      className="h-4 w-4 shrink-0 text-[var(--cue-subtle)]"
+                    />
+                  }
+                  onClick={() =>
+                    setConfirming({ id: program.id, name: program.name, active: false })
+                  }
+                />
+              ))}
+            </List>
+          ) : null}
         </section>
       ) : null}
 
@@ -317,7 +393,7 @@ export function ProgramsScreen() {
       <Sheet
         open={moving !== null}
         onClose={() => setMoving(null)}
-        title="Move program"
+        title="Manage program"
         description={moving?.ensemble.name}
         footer={
           <Button block loading={moveBusy} onClick={() => void moveProgram()}>
@@ -343,8 +419,48 @@ export function ProgramsScreen() {
             Moving a program changes only where it sits. Its memberships, events and attendance
             history stay exactly as they are.
           </p>
+          <div className="border-t border-[var(--cue-line)] pt-4">
+            <Button
+              variant="danger"
+              block
+              icon={<Archive className="h-4 w-4" />}
+              onClick={() => {
+                if (!moving) return;
+                setConfirming({
+                  id: moving.ensemble.id,
+                  name: moving.ensemble.name,
+                  active: true,
+                });
+                setMoving(null);
+              }}
+            >
+              Delete program
+            </Button>
+            <p className="type-meta mt-2">
+              Deleting archives the program. Its roster, events and attendance history are kept.
+            </p>
+          </div>
         </div>
       </Sheet>
+
+      <ConfirmSheet
+        open={confirming !== null}
+        title={
+          confirming
+            ? `${confirming.active ? "Archive" : "Restore"} ${confirming.name}?`
+            : "Update program"
+        }
+        body={
+          confirming?.active
+            ? "It will disappear from the active program list and new members cannot join. Its roster, events and attendance history are kept, and you can restore it later."
+            : "It will become active and available to join again. Existing members and history are unchanged."
+        }
+        confirmLabel={confirming?.active ? "Archive program" : "Restore program"}
+        tone={confirming?.active ? "danger" : "primary"}
+        loading={statusBusy}
+        onCancel={() => setConfirming(null)}
+        onConfirm={() => void updateProgramActive()}
+      />
     </main>
   );
 }
