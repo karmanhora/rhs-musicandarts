@@ -36,6 +36,13 @@ async function serveNoRoster(page: Page): Promise<void> {
   await page.route(/\/rest\/v1\/memberships\?/, (route) => json(route, []));
 }
 
+/** The same persona, but the invitation code has already been redeemed. */
+async function serveVerifiedTeacher(page: Page): Promise<void> {
+  await page.route(`${SUPABASE_HOST}/rest/v1/rpc/teacher_access_status`, (route) =>
+    json(route, { ok: true, verified: true, pending: false, admin: false })
+  );
+}
+
 test("a teacher with no roster sees only the invitation form", async ({ page }) => {
   await installMocks(page, true);
   await serveNoRoster(page);
@@ -65,6 +72,37 @@ test("a teacher who opens /join with no roster is sent to the invitation form", 
   // the other's field.
   await expect(page).toHaveURL(/\/teacher$/);
   await expect(page.getByRole("textbox", { name: "Invitation code" })).toBeVisible();
+  await expect(page.getByRole("textbox", { name: "Join code" })).toHaveCount(0);
+});
+
+test("a verified teacher with no roster lands on starting a program, not joining one", async ({
+  page,
+}) => {
+  await installMocks(page, true);
+  await serveNoRoster(page);
+  await serveVerifiedTeacher(page);
+
+  await page.goto("/");
+
+  // A redeemed invitation is the teacher's whole onboarding: the next thing to
+  // do is name their program. The student join form must not reappear.
+  await expect(page).toHaveURL(/\/new-program$/);
+  await expect(page.getByText("Start your own program", { exact: true })).toBeVisible();
+  await expect(page.getByRole("textbox", { name: "Program name" })).toBeVisible();
+  await expect(page.getByRole("textbox", { name: "Join code" })).toHaveCount(0);
+  await expect(page.getByText("Join a program", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("Join a program with a code instead")).toHaveCount(0);
+});
+
+test("a verified teacher who opens /join is sent to start a program", async ({ page }) => {
+  await installMocks(page, true);
+  await serveNoRoster(page);
+  await serveVerifiedTeacher(page);
+
+  await page.goto("/join");
+
+  await expect(page).toHaveURL(/\/new-program$/);
+  await expect(page.getByRole("textbox", { name: "Program name" })).toBeVisible();
   await expect(page.getByRole("textbox", { name: "Join code" })).toHaveCount(0);
 });
 

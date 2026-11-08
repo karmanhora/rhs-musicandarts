@@ -226,19 +226,16 @@ function ProgramRoutes() {
             thing an invited teacher can do before they belong anywhere. */}
         <Route path="/teacher" element={<TeacherVerifyScreen standalone />} />
         {/* Which door a person with no roster lands on. A student meets the
-            join-code form; a teacher who has not verified an invitation meets
-            the invitation form and nothing else, because two code boxes on one
-            screen is how somebody types the wrong code. `/join` stays reachable
-            by URL for a teacher who really is joining somebody elses roster. */}
-        {/* A teacher's onboarding has exactly one form. `/join` stays available
-            to a student, and to a teacher who is verified or already on a
-            roster, but an unverified teacher who opens it is sent to the
-            invitation form rather than shown a second code box. */}
+            join-code form. A teacher meets the invitation form until the code is
+            verified, then goes straight to creating a program: a verified
+            teacher is the person who will run one, so the student join form is
+            not part of that onboarding. `/join` follows the same rule, which
+            also keeps a second code box off the screen. */}
         <Route
           path="/join"
           element={
-            auth.accountType === "teacher" && !app.mayStartProgram ? (
-              <Navigate to="/teacher" replace />
+            auth.accountType === "teacher" ? (
+              <Navigate to={app.mayStartProgram ? "/new-program" : "/teacher"} replace />
             ) : (
               <JoinProgramScreen standalone />
             )
@@ -247,8 +244,12 @@ function ProgramRoutes() {
         <Route
           path="*"
           element={
-            auth.accountType === "teacher" && !app.mayStartProgram ? (
-              <TeacherVerifyScreen standalone />
+            auth.accountType === "teacher" ? (
+              app.mayStartProgram ? (
+                <Navigate to="/new-program" replace />
+              ) : (
+                <TeacherVerifyScreen standalone />
+              )
             ) : (
               <JoinProgramScreen standalone />
             )

@@ -163,7 +163,7 @@ export function JoinProgramScreen({ standalone = false }: { standalone?: boolean
             </div>
           </div>
           <Button variant="secondary" onClick={() => navigate("/new-program")}>
-            Start a new program
+            Start your own program
           </Button>
         </Card>
       ) : auth.accountType === "teacher" ? (

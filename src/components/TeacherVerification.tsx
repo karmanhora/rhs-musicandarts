@@ -112,9 +112,9 @@ export function TeacherVerification({
           Your invitation code has been used up — one code works once.
         </Alert>
 
-        {!app.mayStartProgram && onStartProgram ? (
+        {onStartProgram ? (
           <Button block size="lg" onClick={onStartProgram}>
-            Start a program
+            Start your own program
           </Button>
         ) : null}
 

@@ -32,7 +32,11 @@ export function TeacherVerifyScreen({ standalone = false }: { standalone?: boole
       <PageHeader
         kicker={["Teacher access", auth.email].filter(Boolean).join(" · ")}
         title="Teacher / director registration"
-        note="One code per teacher, issued by the school. Verifying it lets you start a program of your own and run it as its director."
+        note={
+          app.verifiedTeacher
+            ? "Your invitation is verified. Start a program of your own and run it as its director."
+            : "One code per teacher, issued by the school. Verifying it lets you start a program of your own and run it as its director."
+        }
         actions={
           <Badge
             className={
@@ -74,8 +78,9 @@ export function TeacherVerifyScreen({ standalone = false }: { standalone?: boole
         <p className="type-label mt-3 text-[var(--cue-gold-on-brand)]">{ORG_NAME}</p>
         <p className="type-title mt-1.5">{APP_NAME}</p>
         <p className="mt-1 max-w-md text-sm text-[var(--cue-brand-ink)]/80">
-          You&rsquo;re signed in. Enter your teacher invitation code to unlock starting a program —
-          until then your account stays an ordinary one.
+          {app.verifiedTeacher
+            ? "You're verified. Start your own program — the roster, attendance and live check-in tools come with it."
+            : "You're signed in. Enter your teacher invitation code to unlock starting a program — until then your account stays an ordinary one."}
         </p>
       </div>
 

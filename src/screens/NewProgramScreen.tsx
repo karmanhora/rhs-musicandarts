@@ -211,9 +211,13 @@ export function NewProgramScreen({ standalone = false }: { standalone?: boolean 
       <div className="flex-1">{form}</div>
 
       <div className="space-y-3 px-6 pb-6">
-        <Button block variant="secondary" onClick={() => navigate("/join")}>
-          Join a program with a code instead
-        </Button>
+        {/* A verified teacher is here to start a program; offering the student
+            join form would send them back into onboarding they have finished. */}
+        {!app.mayStartProgram ? (
+          <Button block variant="secondary" onClick={() => navigate("/join")}>
+            Join a program with a code instead
+          </Button>
+        ) : null}
         <Button
           block
           variant="ghost"
