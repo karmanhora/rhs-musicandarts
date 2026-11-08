@@ -15,9 +15,10 @@ import { APP_NAME, ORG_NAME } from "../lib/constants";
  * Joining somebody else's program needs their join code, so the first teacher in
  * a subject had nobody to ask and no way to use the app at all. This is the door
  * that does not need anybody: name a program, and `create_program()` makes the
- * caller its director. The roster, attendance and live check-in tools are ready
- * the moment it exists, and it starts **closed** — with its own join code for the
- * director to hand out.
+ * caller its director. A system administrator is the exception — they keep every
+ * capability and are not added to the new roster (migration 20261108120000). The
+ * roster, attendance and live check-in tools are ready the moment it exists, and
+ * it starts **closed** — with its own join code for the director to hand out.
  *
  * Like the join screen, this is used twice: standalone (no app bar, no bottom
  * nav) when somebody is signed in with no roster at all, and as the
@@ -108,7 +109,9 @@ export function NewProgramScreen({ standalone = false }: { standalone?: boolean 
         note={
           needsVerification
             ? "Starting a program needs verified teacher access. Enter the invitation code your school issued you, and this form opens right up."
-            : "Name it, list its instruments, and you're its director. The roster, attendance and live check-in tools are ready as soon as it exists."
+            : app.isSystemAdmin
+              ? "Name it and list its instruments. You keep full access as a system administrator, without joining its roster. The roster, attendance and live check-in tools are ready as soon as it exists."
+              : "Name it, list its instruments, and you're its director. The roster, attendance and live check-in tools are ready as soon as it exists."
         }
       />
 
@@ -183,8 +186,9 @@ export function NewProgramScreen({ standalone = false }: { standalone?: boolean 
       <Card className="flex items-start gap-3">
         <ShieldCheck aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-[var(--cue-subtle)]" />
         <p className="type-meta">
-          You become the director of this program only. Nothing here can change your access to
-          somebody else&rsquo;s program — that is a director&rsquo;s decision, made on their roster.
+          {app.isSystemAdmin
+            ? "You keep every capability in every program without joining this one's roster. Nothing here changes anybody else's access."
+            : "You become the director of this program only. Nothing here changes your access to somebody else's program — that is a director's decision, made on their roster."}
         </p>
       </Card>
     </div>

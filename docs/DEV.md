@@ -384,8 +384,14 @@ Migration 031 changes shape in two ways —
   / `move_program_to_team()` add to it and rearrange it
   ([20261104014155_create_team.sql](../supabase/migrations/20261104014155_create_team.sql));
   all three are gated on `is_program_admin()`, so a director cannot create or
-  rearrange programs — the database refuses it, not just the hidden screen. The app's *Programs & teams*
-  screen (`/programs`, behind `system.manage`) is the only surface; the switcher
+  rearrange programs — the database refuses it, not just the hidden screen.
+  Creating one does not put the administrator on its roster: no membership is
+  written for a `program_admins` account
+  ([20261108120000_system_admin_off_rosters.sql](../supabase/migrations/20261108120000_system_admin_off_rosters.sql)),
+  and the membership rows earlier creations left on administrator accounts were
+  removed there. The account keeps every capability through `is_program_admin()`.
+  The app's *Programs & teams* screen (`/programs`, behind `system.manage`) is
+  the only surface; the switcher
   reads the same column to indent a team's programs. Deleting a team detaches its
   programs (`on delete set null`); it never deletes them.
 

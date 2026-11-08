@@ -179,8 +179,9 @@ export function SetupScreen() {
                 />
               </List>
               <p className="type-meta border-t border-[var(--cue-line)] pt-3">
-                You are the director of {app.program.name} only. Nothing here changes anybody
-                else&rsquo;s view, and nothing here changes what you are allowed to open.
+                {app.isSystemAdmin
+                  ? `You administer every program, including ${app.program.name} — without a row on its roster. Nothing here changes anybody else's view.`
+                  : `You are the director of ${app.program.name} only. Nothing here changes anybody else's view, and nothing here changes what you are allowed to open.`}
               </p>
             </Card>
           </>

@@ -37,6 +37,11 @@ const byName = (a: SwitchableProgram, b: SwitchableProgram) =>
  * hiding the route is presentation, not the boundary. A director keeps every
  * right they had inside their own program; none of those rights include
  * rearranging programs.
+ *
+ * Creating one does not put the administrator on its roster: those RPCs write
+ * no membership for a `program_admins` account (migration 20261108120000),
+ * because that account already holds every capability in every program. The
+ * administrator stays invisible on the roster and keeps full access.
  */
 export function ProgramsScreen() {
   const app = usePrograms();
@@ -262,8 +267,8 @@ export function ProgramsScreen() {
             />
           </Field>
           <p className="type-meta">
-            The team starts empty and closed, with its own join code, and you become its director.
-            Add its programs next.
+            The team starts empty and closed, with its own join code. Your administrator access
+            needs no roster row, so you are not added to it. Add its programs next.
           </p>
         </div>
       </Sheet>
@@ -301,7 +306,7 @@ export function ProgramsScreen() {
             />
           </Field>
           <p className="type-meta">
-            The new program starts closed, with its own join code, and you become its director.
+            The new program starts closed, with its own join code. You are not added to its roster.
           </p>
         </div>
       </Sheet>

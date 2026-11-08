@@ -127,12 +127,15 @@ export async function importGoogleCalendar(
 }
 
 /**
- * Start a program and become its director. Teacher accounts can do this without
- * approval or a code; student accounts are refused by the server.
+ * Start a program. A teacher becomes its director; a system administrator gets
+ * no membership and keeps every capability through `program_admins`. Teacher
+ * accounts can do this without approval or a code; student accounts are refused
+ * by the server.
  *
  * The name is the only thing the caller controls: the RPC always creates a
- * **new** program with the caller as `{director}`, so this can never be pointed
- * at an existing one. It also handles their first-ever `profiles` row (which is
+ * **new** program with the caller as its only director — or, for a system
+ * administrator, with no roster row at all — so this can never be pointed at an
+ * existing one. It also handles their first-ever `profiles` row (which is
  * why `displayName` matters when they have none), gives the program a join code
  * to start with, and refuses a blank name or a sixth program inside an hour.
  *
@@ -158,8 +161,9 @@ export const createProgram = (
 
 /**
  * System administrator only: start an empty team — a program that holds
- * programs. It begins with its own join code and the caller as director;
- * `createProgramInTeam()` is what puts the first program inside it.
+ * programs. It begins with its own join code; the caller is a system
+ * administrator and is not added to its roster. `createProgramInTeam()` is what
+ * puts the first program inside it.
  */
 export const createTeam = (
   name: string,
@@ -177,8 +181,9 @@ export const createTeam = (
 
 /**
  * System administrator only: create a program inside a team — "Jazz Ensemble"
- * under "RHS Band". The caller becomes its director, exactly as
- * `create_program()` makes them theirs; the server refuses everybody else.
+ * under "RHS Band". The caller gains no roster row: a `program_admins` account
+ * already holds every capability in every program; the server refuses
+ * everybody else.
  */
 export const createProgramInTeam = (
   parentId: string,
