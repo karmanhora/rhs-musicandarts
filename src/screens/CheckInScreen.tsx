@@ -229,7 +229,11 @@ function CheckInOutcome({ outcome, kind }: { outcome: RpcResult; kind: CheckinKi
 function CheckInForm() {
   const app = usePrograms();
   const profileId = app.profile?.id ?? null;
-  const [tab, setTab] = useState<"scan" | "code">("scan");
+  // Start on the typed code, never on the camera. Mounting the scanner opens
+  // the camera (and the browser's permission prompt) as soon as `/checkin`
+  // renders, which can wedge the page before it is usable. The scan tab is one
+  // tap away, and that tap is the gesture a camera request should wait for.
+  const [tab, setTab] = useState<"scan" | "code">("code");
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [outcome, setOutcome] = useState<{ result: RpcResult; kind: CheckinKind } | null>(null);
