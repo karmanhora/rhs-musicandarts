@@ -1,7 +1,9 @@
+import { useEffect, useState } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
-import { Splash } from "./components/Splash";
+import { NativeOpeningScreen, Splash } from "./components/Splash";
 import { ToastProvider } from "./components/ui";
 import { AuthProvider, useAuth } from "./hooks/useAuth";
+import { isNativeApp } from "./lib/nativeAuth";
 import SignedInApp from "./SignedInApp";
 import { WelcomeScreen } from "./screens/WelcomeScreen";
 import { AuthScreen } from "./screens/AuthScreen";
@@ -18,12 +20,31 @@ import { LegalScreen } from "./screens/LegalScreen";
  * localStorage on the first tick, so this resolves locally.
  */
 export default function App() {
+  const nativeApp = isNativeApp();
+  const [opening, setOpening] = useState(nativeApp);
+  const [openingLeaving, setOpeningLeaving] = useState(false);
+
+  useEffect(() => {
+    if (!nativeApp) return;
+    // Hold long enough to see the loader move and read the opening line, then
+    // fade rather than cut.
+    const leaveTimer = window.setTimeout(() => setOpeningLeaving(true), 1200);
+    const hideTimer = window.setTimeout(() => setOpening(false), 1380);
+    return () => {
+      window.clearTimeout(leaveTimer);
+      window.clearTimeout(hideTimer);
+    };
+  }, [nativeApp]);
+
   return (
-    <ToastProvider>
-      <AuthProvider>
-        <SessionRoutes />
-      </AuthProvider>
-    </ToastProvider>
+    <>
+      <ToastProvider>
+        <AuthProvider>
+          <SessionRoutes />
+        </AuthProvider>
+      </ToastProvider>
+      {opening ? <NativeOpeningScreen leaving={openingLeaving} /> : null}
+    </>
   );
 }
 
@@ -77,7 +98,9 @@ function SessionRoutes() {
 
     return (
       <Routes>
-        <Route path="/" element={<WelcomeScreen />} />
+        {/* The native app opens on the sign-in surface, not the public
+            marketing page. The browser keeps the landing page it already has. */}
+        <Route path="/" element={isNativeApp() ? <AuthScreen mode="sign-in" /> : <WelcomeScreen />} />
         {/* The `*` variants keep working when our own links carry a sub-path. */}
         <Route path="/sign-in/*" element={<AuthScreen mode="sign-in" />} />
         <Route path="/sign-up/*" element={<AuthScreen mode="sign-up" />} />

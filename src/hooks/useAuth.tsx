@@ -1,10 +1,21 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
+import { useNavigate } from "react-router-dom";
 import type { Session, User } from "@supabase/supabase-js";
 import type { AuthAudience } from "../lib/constants";
 import { getSignupAccountType, setSignupAccountType } from "../lib/rpc";
 import { clearAppearanceCache } from "../lib/personalization";
 import { supabase } from "../lib/supabase";
+import {
+  clearNativeOAuth,
+  isNativeApp,
+  listenForNativeAuth,
+  nativeAuthRedirect,
+  openNativeOAuth,
+  rememberNativeOAuth,
+  takeNativeOAuth,
+} from "../lib/nativeAuth";
+import type { NativeOAuthPending } from "../lib/nativeAuth";
 
 /**
  * The signed-in session, from Supabase Auth.
@@ -54,7 +65,10 @@ export interface AuthState {
   recovering: boolean;
   clearRecovery: () => void;
   signIn: (email: string, password: string) => Promise<{ error: string | null }>;
-  signInWithGoogle: (redirectTo: string) => Promise<{ error: string | null }>;
+  signInWithGoogle: (
+    redirectTo: string,
+    nativeOptions?: { accountType?: AuthAudience; returnTo?: string }
+  ) => Promise<{ error: string | null }>;
   signUp: (
     email: string,
     password: string,
@@ -201,9 +215,12 @@ function takeExpiredLinkNotice(): string | null {
 const initialAuthLinkError = takeExpiredLinkNotice();
 
 export function AuthProvider({ children }: { children: ReactNode }) {
+  const navigate = useNavigate();
   const [session, setSession] = useState<Session | null>(null);
   const [status, setStatus] = useState<AuthStatus>("loading");
   const [recovering, setRecovering] = useState(false);
+  const [authLinkError, setAuthLinkError] = useState<string | null>(initialAuthLinkError);
+  const [pendingNativeAuth, setPendingNativeAuth] = useState<NativeOAuthPending | null>(null);
   const [accountTypeSetupError, setAccountTypeSetupError] = useState<string | null>(null);
   const [accountType, setAccountType] = useState<AuthAudience | null>(null);
   const [accountTypeLoading, setAccountTypeLoading] = useState(true);
@@ -241,12 +258,59 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
+    if (!isNativeApp()) return;
+    let active = true;
+    let stop: (() => void) | undefined;
+
+    void listenForNativeAuth((outcome) => {
+      if (!active) return;
+      const pending = takeNativeOAuth();
+
+      if (outcome.recovery) {
+        setPendingNativeAuth(null);
+        setRecovering(true);
+        setAuthLinkError(null);
+        return;
+      }
+
+      if (outcome.error) {
+        setPendingNativeAuth(null);
+        setAuthLinkError(readable(outcome.error));
+        return;
+      }
+
+      setPendingNativeAuth(pending);
+      setAuthLinkError(null);
+    })
+      .then((cleanup) => {
+        if (active) stop = cleanup;
+        else cleanup();
+      })
+      .catch((error: unknown) => {
+        if (active) {
+          setAuthLinkError(
+            error instanceof Error ? error.message : "Could not handle the sign-in link."
+          );
+        }
+      });
+
+    return () => {
+      active = false;
+      stop?.();
+    };
+  }, []);
+
+  useEffect(() => {
     if (!session) {
       setAccountType(null);
       setAccountTypeSetupError(null);
       setAccountTypeLoading(false);
       return;
     }
+
+    // A native callback owns this update: it has to apply the sign-up choice
+    // before the app decides which onboarding screen to show.
+    if (pendingNativeAuth) return;
 
     let active = true;
     setAccountTypeLoading(true);
@@ -269,7 +333,39 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => {
       active = false;
     };
-  }, [session?.user.id, oauthAccountType]);
+  }, [session?.user.id, oauthAccountType, pendingNativeAuth]);
+
+  /**
+   * Finish the native OAuth handoff after the session is live. The selected
+   * audience is applied before navigation, so a teacher never flashes through
+   * the student onboarding screen, and a pending `/checkin?token=…` route is
+   * restored even when iOS killed the app while Safari was open.
+   */
+  useEffect(() => {
+    if (!session || !pendingNativeAuth) return;
+
+    let active = true;
+    const pending = pendingNativeAuth;
+
+    const finish = async () => {
+      setAccountTypeLoading(true);
+      const result = pending.accountType
+        ? await setSignupAccountType(pending.accountType)
+        : await getSignupAccountType();
+      if (!active) return;
+
+      setAccountType(result.accountType);
+      setAccountTypeSetupError(result.error);
+      setAccountTypeLoading(false);
+      setPendingNativeAuth(null);
+      navigate(pending.returnTo, { replace: true });
+    };
+
+    void finish();
+    return () => {
+      active = false;
+    };
+  }, [session?.user.id, pendingNativeAuth, navigate]);
 
   const clearRecovery = useCallback(() => {
     setRecovering(false);
@@ -289,13 +385,41 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return { error: error ? readable(error.message) : null };
   }, []);
 
-  const signInWithGoogle = useCallback(async (redirectTo: string) => {
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: { redirectTo },
-    });
-    return { error: error ? readable(error.message) : null };
-  }, []);
+  const signInWithGoogle = useCallback(
+    async (
+      redirectTo: string,
+      nativeOptions?: { accountType?: AuthAudience; returnTo?: string }
+    ) => {
+      if (isNativeApp()) {
+        rememberNativeOAuth({
+          accountType: nativeOptions?.accountType,
+          returnTo: nativeOptions?.returnTo ?? "/",
+        });
+        const { data, error } = await supabase.auth.signInWithOAuth({
+          provider: "google",
+          options: { redirectTo: nativeAuthRedirect(), skipBrowserRedirect: true },
+        });
+        if (error) {
+          clearNativeOAuth();
+          return { error: readable(error.message) };
+        }
+        if (!data.url) {
+          clearNativeOAuth();
+          return { error: "Google sign-in did not return a URL." };
+        }
+        const openError = await openNativeOAuth(data.url);
+        if (openError) clearNativeOAuth();
+        return { error: openError ? readable(openError) : null };
+      }
+
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: { redirectTo },
+      });
+      return { error: error ? readable(error.message) : null };
+    },
+    []
+  );
 
   const signUp = useCallback(
     async (email: string, password: string, audience: AuthAudience, displayName?: string) => {
@@ -310,7 +434,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             account_type: audience,
             ...(displayName?.trim() ? { full_name: displayName.trim() } : {}),
           },
-          emailRedirectTo: `${window.location.origin}/`,
+          emailRedirectTo: isNativeApp() ? nativeAuthRedirect() : `${window.location.origin}/`,
         },
       });
       if (error) {
@@ -355,7 +479,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const sendPasswordReset = useCallback(async (email: string) => {
     const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
-      redirectTo: `${window.location.origin}/reset-password`,
+      redirectTo: isNativeApp()
+        ? nativeAuthRedirect()
+        : `${window.location.origin}/reset-password`,
     });
     return { error: error ? readable(error.message) : null };
   }, []);
@@ -364,7 +490,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const { error } = await supabase.auth.resend({
       type: "signup",
       email: email.trim(),
-      options: { emailRedirectTo: `${window.location.origin}/` },
+      options: {
+        emailRedirectTo: isNativeApp() ? nativeAuthRedirect() : `${window.location.origin}/`,
+      },
     });
     return { error: error ? readable(error.message) : null };
   }, []);
@@ -390,7 +518,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const updateEmail = useCallback(async (email: string) => {
     const { error } = await supabase.auth.updateUser(
       { email: email.trim() },
-      { emailRedirectTo: `${window.location.origin}/settings` }
+      { emailRedirectTo: isNativeApp() ? nativeAuthRedirect() : `${window.location.origin}/settings` }
     );
     return { error: error ? readable(error.message) : null };
   }, []);
@@ -452,7 +580,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       accountTypeLoading,
       accountTypeSetupError,
       emailVerified: Boolean(session?.user?.email_confirmed_at),
-      authLinkError: initialAuthLinkError,
+      authLinkError,
       displayName:
         (session?.user?.user_metadata?.full_name as string | undefined)?.trim() || null,
       recovering,

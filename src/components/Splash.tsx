@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { APP_NAME } from "../lib/constants";
 import { pickMusicQuote } from "../lib/quotes";
-import { cn } from "./ui";
+import { cn, StaffMotif } from "./ui";
 
 export function MusicLoader() {
   return (
@@ -71,6 +71,42 @@ export function LoadingQuote({
         {quote.author}
       </figcaption>
     </figure>
+  );
+}
+
+/**
+ * The native app's opening moment.
+ *
+ * iOS cannot animate its launch storyboard, so the first thing the app can own
+ * is this short branded handoff once the web view is alive. It uses the same
+ * loader and staff motif as the in-app loading surfaces, which keeps the app
+ * feeling like one product rather than a separate shell.
+ */
+export function NativeOpeningScreen({ leaving = false }: { leaving?: boolean }) {
+  return (
+    <div
+      aria-label="Opening RHS Music & Arts"
+      aria-busy="true"
+      className={cn(
+        "app-opening fixed inset-0 z-[9999] flex flex-col items-center justify-center overflow-hidden bg-[var(--cue-brand-panel)] px-8 text-center text-[var(--cue-brand-ink)]",
+        leaving && "pointer-events-none"
+      )}
+      data-leaving={leaving ? "true" : undefined}
+      role="status"
+    >
+      <StaffMotif className="text-[var(--cue-brand-ink)] opacity-[0.14]" />
+      <div className="app-opening-mark relative z-10 flex flex-col items-center gap-5">
+        <img src="/logo.svg" alt="" className="h-16 w-16" />
+        <div>
+          <p className="type-wordmark text-lg leading-tight">RHS Music &amp; Arts</p>
+          <p className="type-meta mt-1 text-[var(--cue-brand-ink)]/70!">
+            Attendance · Events · Check-in
+          </p>
+        </div>
+        <MusicLoader />
+        <LoadingQuote className="mt-1 max-w-xs" />
+      </div>
+    </div>
   );
 }
 

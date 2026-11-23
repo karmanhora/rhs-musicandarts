@@ -6,6 +6,7 @@ import { Alert, Button, Field, Input, SegmentedControl, useToast } from "../comp
 import { GoogleMark } from "../components/GoogleMark";
 import { APP_NAME, readAuthAudience, writeAuthAudience } from "../lib/constants";
 import type { AuthAudience } from "../lib/constants";
+import { isNativeApp } from "../lib/nativeAuth";
 import { useAuth } from "../hooks/useAuth";
 
 type AuthMode = "sign-in" | "sign-up" | "forgot" | "reset";
@@ -72,6 +73,7 @@ const MODE_COPY: Record<AuthMode, { title: string; aside: string; asideSub: stri
  */
 export function AuthScreen({ mode }: { mode: AuthMode }) {
   const auth = useAuth();
+  const native = isNativeApp();
   const { toast } = useToast();
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
@@ -299,11 +301,17 @@ export function AuthScreen({ mode }: { mode: AuthMode }) {
       redirectUrl.searchParams.delete("account_type");
     }
     const redirectTo = redirectUrl.toString();
-    const { error: failure } = await auth.signInWithGoogle(redirectTo);
-    if (failure) {
-      setBusy(false);
-      setError(failure);
-    }
+    const { error: failure } = await auth.signInWithGoogle(redirectTo, {
+      // The web build carries these in the redirect URL; the native build
+      // stores them because iOS may cold-launch the app from the callback.
+      accountType: mode === "sign-up" ? audience : undefined,
+      returnTo: afterAuth ?? "/",
+    });
+    // On native this returns as soon as the system browser opens; on web the
+    // page is already navigating away. Either way, don't leave the button
+    // spinning if the person comes back without finishing.
+    setBusy(false);
+    if (failure) setError(failure);
   }
 
   /* --- dead ends that deserve a whole panel rather than a form ------------ */
@@ -437,12 +445,15 @@ export function AuthScreen({ mode }: { mode: AuthMode }) {
   const showsAudience = mode === "sign-up";
   const supportsGoogle = mode === "sign-in" || mode === "sign-up";
   const isSignIn = mode === "sign-in";
+  /** Inline links keep their text treatment but get a 44px touch box. */
+  const nativeLegalLink =
+    "inline-flex min-h-11 items-center align-middle font-semibold underline underline-offset-2";
 
   return (
     <AuthLayout mode={mode}>
       {showsAudience ? (
         <SegmentedControl
-          className="mb-5"
+          className={native ? "mb-4" : "mb-5"}
           value={audience}
           onChange={chooseAudience}
           options={[
@@ -453,9 +464,11 @@ export function AuthScreen({ mode }: { mode: AuthMode }) {
       ) : null}
 
       {/* Keyed to the audience: the copy re-reveals on a switch while the form
-          below stays mounted with everything typed. */}
-      <div key={showsAudience ? audience : mode} className="cue-stagger">
-        <p className="type-label text-[var(--cue-green)]">
+          below stays mounted with everything typed. The native shell carries
+          the same heading in its stage, so the form starts at the fields. */}
+      {native ? null : (
+        <div key={showsAudience ? audience : mode} className="cue-stagger">
+          <p className="type-label text-[var(--cue-green)]">
           {isSignIn
             ? "Welcome back"
             : mode === "sign-up"
@@ -467,19 +480,21 @@ export function AuthScreen({ mode }: { mode: AuthMode }) {
         <h2 className="type-title mt-2">
           {isSignIn ? "Sign in" : headline.title}
         </h2>
-        <p className="type-meta mt-2">
-          {isSignIn
-            ? "Sign in to open your programs and attendance."
-            : mode === "sign-up"
-              ? copy.signUpSub
-              : headline.asideSub}
-        </p>
-      </div>
+          <p className="type-meta mt-2">
+            {isSignIn
+              ? "Sign in to open your programs and attendance."
+              : mode === "sign-up"
+                ? copy.signUpSub
+                : headline.asideSub}
+          </p>
+        </div>
+      )}
 
-      <form className="mt-6 space-y-4" onSubmit={(e) => void submit(e)}>
-        {isSignIn && auth.authLinkError ? (
-          <Alert tone="warn">{auth.authLinkError}</Alert>
-        ) : null}
+      <form
+        className={native ? "mt-4 space-y-3" : "mt-6 space-y-4"}
+        onSubmit={(e) => void submit(e)}
+      >
+        {auth.authLinkError ? <Alert tone="warn">{auth.authLinkError}</Alert> : null}
         {error ? <Alert tone="error">{error}</Alert> : null}
         {notice ? <Alert tone="warn">{notice}</Alert> : null}
         {existingAccount ? (
@@ -570,7 +585,13 @@ export function AuthScreen({ mode }: { mode: AuthMode }) {
 
       {supportsGoogle ? (
         <>
-          <div className="my-5 flex items-center gap-3 text-xs text-[var(--cue-muted)]">
+          <div
+            className={
+              native
+                ? "my-4 flex items-center gap-3 text-xs text-[var(--cue-muted)]"
+                : "my-5 flex items-center gap-3 text-xs text-[var(--cue-muted)]"
+            }
+          >
             <span aria-hidden="true" className="h-px flex-1 bg-[var(--cue-border)]" />
             <span>or continue with</span>
             <span aria-hidden="true" className="h-px flex-1 bg-[var(--cue-border)]" />
@@ -588,14 +609,17 @@ export function AuthScreen({ mode }: { mode: AuthMode }) {
           <p className="mt-2 text-center text-[11px] leading-relaxed text-[var(--cue-muted)]">
             Google sign-in shares only your name, email address, and Google account ID. We never
             request access to your Gmail, Google Calendar, or Drive.{" "}
-            <Link to="/privacy" className="font-semibold underline underline-offset-2">
+            <Link
+              to="/privacy"
+              className={native ? nativeLegalLink : "font-semibold underline underline-offset-2"}
+            >
               Privacy Policy
             </Link>
           </p>
         </>
       ) : null}
 
-      <div className="mt-5 space-y-3 text-center text-sm">
+      <div className={native ? "mt-3 text-center text-sm" : "mt-5 space-y-3 text-center text-sm"}>
         {mode === "sign-in" ? (
           <>
             {/* Every one of these is a real destination on a phone, so each is
@@ -606,17 +630,19 @@ export function AuthScreen({ mode }: { mode: AuthMode }) {
             >
               Forgot your password?
             </Link>
-            <Link
-              to="/sign-up"
-              className="flex min-h-11 flex-col items-center justify-center text-[var(--cue-muted)]"
-            >
-              New here?
-              <span className="font-semibold underline">Create an account</span>
-            </Link>
+            {native ? null : (
+              <Link
+                to="/sign-up"
+                className="flex min-h-11 flex-col items-center justify-center text-[var(--cue-muted)]"
+              >
+                New here?
+                <span className="font-semibold underline">Create an account</span>
+              </Link>
+            )}
           </>
         ) : null}
 
-        {mode === "sign-up" ? (
+        {mode === "sign-up" && !native ? (
           <Link
             to="/sign-in"
             className="flex min-h-11 flex-col items-center justify-center text-[var(--cue-muted)]"
@@ -626,7 +652,7 @@ export function AuthScreen({ mode }: { mode: AuthMode }) {
           </Link>
         ) : null}
 
-        {mode === "forgot" || mode === "reset" ? (
+        {(mode === "forgot" || mode === "reset") && !native ? (
           <Link to="/sign-in" className="flex min-h-11 items-center justify-center text-[var(--cue-muted)]">
             <span className="font-semibold underline">Back to sign in</span>
           </Link>
@@ -641,13 +667,25 @@ export function AuthScreen({ mode }: { mode: AuthMode }) {
 
       {/* The public notices, one tap from every auth mode. On sign-up this is
           also the consent line; on the others it is just discovery. */}
-      <p className="mt-4 text-center text-[11px] leading-relaxed text-[var(--cue-muted)]">
+      <p
+        className={
+          native
+            ? "mt-3 text-center text-[11px] leading-relaxed text-[var(--cue-muted)]"
+            : "mt-4 text-center text-[11px] leading-relaxed text-[var(--cue-muted)]"
+        }
+      >
         {mode === "sign-up" ? "By creating an account you agree to our " : ""}
-        <Link to="/terms" className="font-semibold underline underline-offset-2">
+        <Link
+          to="/terms"
+          className={native ? nativeLegalLink : "font-semibold underline underline-offset-2"}
+        >
           Terms of Use
         </Link>
         {mode === "sign-up" ? " and " : " \u00b7 "}
-        <Link to="/privacy" className="font-semibold underline underline-offset-2">
+        <Link
+          to="/privacy"
+          className={native ? nativeLegalLink : "font-semibold underline underline-offset-2"}
+        >
           Privacy Policy
         </Link>
         {mode === "sign-up" ? "." : ""}
@@ -664,6 +702,10 @@ export function AuthScreen({ mode }: { mode: AuthMode }) {
  */
 function AuthLayout({ mode, children }: { mode: AuthMode; children: ReactNode }) {
   const copy = MODE_COPY[mode];
+
+  if (isNativeApp()) {
+    return <NativeAuthLayout mode={mode}>{children}</NativeAuthLayout>;
+  }
 
   return (
     <main className="safe-t flex min-h-full items-center justify-center overflow-y-auto bg-[var(--cue-page)] px-4 py-6 text-[var(--cue-ink)] sm:px-6 sm:py-10">
@@ -692,6 +734,85 @@ function AuthLayout({ mode, children }: { mode: AuthMode; children: ReactNode })
         <section className="flex items-center justify-center px-5 py-8 sm:px-9 sm:py-10 md:px-12">
           <div className="w-full max-w-md">{children}</div>
         </section>
+      </div>
+    </main>
+  );
+}
+
+/**
+ * The native app's auth shell.
+ *
+ * The website's two-column auth layout is deliberately left alone: a desktop
+ * browser gets the branded aside and form panel exactly as before. The app is
+ * a one-handed surface, so it gets one slim brand lockup, plain tabs, and the
+ * form directly on the page. The old green hero, raised tab track and padded
+ * card are gone: together they pushed the primary action and the password exit
+ * below the fold on a normal phone.
+ */
+function NativeAuthLayout({ mode, children }: { mode: AuthMode; children: ReactNode }) {
+  const copy = MODE_COPY[mode];
+  const showModeSwitch = mode === "sign-in" || mode === "sign-up";
+  const tabBase =
+    "relative motion-press flex min-h-11 items-center justify-center px-1 text-sm font-semibold";
+  const activeTab = `${tabBase} text-[var(--cue-ink)]`;
+  const idleTab = `${tabBase} text-[var(--cue-muted)]`;
+
+  return (
+    <main className="safe-t safe-b flex min-h-full flex-col overflow-y-auto bg-[var(--cue-page)] text-[var(--cue-ink)]">
+      <header className="mx-auto flex w-full max-w-lg items-center gap-3 px-4 py-3">
+        <img src="/logo.svg" alt="" width={40} height={40} className="h-10 w-10 shrink-0" />
+        <div className="min-w-0">
+          <p className="type-wordmark text-[0.9375rem] leading-tight">RHS Music &amp; Arts</p>
+          <p className="type-meta mt-0.5">Attendance · Events · Check-in</p>
+        </div>
+      </header>
+
+      <div className="mx-auto flex w-full max-w-lg flex-1 flex-col px-4 pb-4">
+        <h1 className="sr-only">{copy.title}</h1>
+
+        {showModeSwitch ? (
+          <nav
+            aria-label="Account access"
+            className="flex gap-8 border-b border-[var(--cue-line)]"
+          >
+            <Link
+              to="/sign-in"
+              aria-current={mode === "sign-in" ? "page" : undefined}
+              className={mode === "sign-in" ? activeTab : idleTab}
+            >
+              Sign in
+              {mode === "sign-in" ? (
+                <span
+                  aria-hidden="true"
+                  className="absolute inset-x-0 -bottom-px h-0.5 bg-[var(--cue-green)]"
+                />
+              ) : null}
+            </Link>
+            <Link
+              to="/sign-up"
+              aria-current={mode === "sign-up" ? "page" : undefined}
+              className={mode === "sign-up" ? activeTab : idleTab}
+            >
+              Create account
+              {mode === "sign-up" ? (
+                <span
+                  aria-hidden="true"
+                  className="absolute inset-x-0 -bottom-px h-0.5 bg-[var(--cue-green)]"
+                />
+              ) : null}
+            </Link>
+          </nav>
+        ) : (
+          <Link
+            to="/sign-in"
+            className="motion-press inline-flex min-h-11 items-center gap-2 self-start text-sm font-semibold text-[var(--cue-green)]"
+          >
+            <span aria-hidden="true">←</span>
+            Back to sign in
+          </Link>
+        )}
+
+        <div className="pt-4">{children}</div>
       </div>
     </main>
   );

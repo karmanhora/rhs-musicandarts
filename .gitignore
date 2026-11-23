@@ -35,3 +35,13 @@ playwright-report/
 
 # Freebuff workspace metadata (machine-local)
 .freebuff/
+
+# Local Supabase stack (local-only config + CLI state)
+.devstack/
+.supabase/
+
+# Capacitor iOS build artifacts
+ios/App/Pods/
+ios/App/build/
+ios/DerivedData/
+ios/App/App/public/

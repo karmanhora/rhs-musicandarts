@@ -8,6 +8,8 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "typecheck": "tsc -b --noEmit",
+    "cap:sync": "npm run build && npx cap sync",
+    "cap:ios": "npx cap open ios",
     "check:headers": "node scripts/dev/check_security_headers.mjs",
     "test:e2e": "playwright test",
     "test:qa": "playwright test --project=chromium"
@@ -24,6 +26,10 @@
     "not dead"
   ],
   "dependencies": {
+    "@capacitor/app": "^8.1.2",
+    "@capacitor/app-launcher": "^8.0.1",
+    "@capacitor/core": "^8.6.2",
+    "@capacitor/ios": "^8.6.2",
     "@fontsource-variable/ibm-plex-sans": "^5.3.0",
     "@fontsource/barlow-condensed": "^5.3.0",
     "@supabase/supabase-js": "^2.112.3",
@@ -36,6 +42,7 @@
     "vgpu": "^0.6.0"
   },
   "devDependencies": {
+    "@capacitor/cli": "^8.6.2",
     "@playwright/test": "^1.64.0",
     "@tailwindcss/vite": "^4.3.3",
     "@types/react": "^19.2.18",

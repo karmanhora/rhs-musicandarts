@@ -676,6 +676,52 @@ a[href] {
  * swapping sides, a mark landing, a route changing, a tab settling.
  * ------------------------------------------------------------------------ */
 
+/*
+ * The native app's opening handoff. It is a fixed overlay, so it covers the
+ * already-mounted app while auth and the first route resolve; the loader uses
+ * the same music animation as every other loading surface.
+ */
+.app-opening {
+  animation: app-opening-in 260ms var(--ease-standard) both;
+}
+
+.app-opening[data-leaving="true"] {
+  animation: app-opening-out 180ms var(--ease-standard) both;
+}
+
+.app-opening-mark {
+  animation: app-opening-mark 620ms var(--spring-settle) both;
+}
+
+@keyframes app-opening-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes app-opening-mark {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes app-opening-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
 .music-loader {
   --icon-count: 3;
   --inner-height: 2.75em;
