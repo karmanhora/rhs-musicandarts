@@ -6,6 +6,9 @@ import { ConfigMissingScreen } from "./screens/ConfigMissingScreen";
 import { isBackendConfigured } from "./lib/backend-config";
 import "@fontsource/barlow-condensed/latin-600.css";
 import "@fontsource/barlow-condensed/latin-700.css";
+import "@fontsource/fraunces/latin-500.css";
+import "@fontsource/fraunces/latin-600.css";
+import "@fontsource/fraunces/latin-500-italic.css";
 import "@fontsource-variable/ibm-plex-sans/wght.css";
 import "./index.css";
 

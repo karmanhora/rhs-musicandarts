@@ -18,10 +18,14 @@
  * primitives rather than hand-rolling markup.
  */
 import {
+  Children,
+  cloneElement,
   createContext,
+  isValidElement,
   useCallback,
   useContext,
   useEffect,
+  useId,
   useMemo,
   useRef,
   useState,
@@ -29,6 +33,7 @@ import {
 import type {
   ButtonHTMLAttributes,
   InputHTMLAttributes,
+  ReactElement,
   ReactNode,
   SelectHTMLAttributes,
   TextareaHTMLAttributes,
@@ -618,25 +623,47 @@ const CONTROL_CLASS =
 
 export function Field({
   label,
+  labelAction,
   hint,
   error,
   children,
   className,
+  id,
 }: {
   label?: string;
+  /** An optional action aligned with the label, such as "Forgot password?". */
+  labelAction?: ReactNode;
   hint?: string;
   error?: string | null;
   children: ReactNode;
   className?: string;
+  /** Optional id for the control; generated when omitted. */
+  id?: string;
 }) {
+  const generatedId = useId();
+  const controlId = id ?? generatedId;
+  let idAssigned = false;
+  const control = Children.toArray(children).map((child) => {
+    if (!idAssigned && isValidElement(child)) {
+      idAssigned = true;
+      return cloneElement(child as ReactElement<{ id?: string }>, {
+        id: (child.props as { id?: string }).id ?? controlId,
+      });
+    }
+    return child;
+  });
+
   return (
-    <label className={cn("block", className)}>
+    <div className={cn("block", className)}>
       {label ? (
-        <span className="mb-1.5 block text-[0.8125rem] font-semibold text-[var(--cue-ink)]">
-          {label}
-        </span>
+        <div className="mb-1.5 flex items-center justify-between gap-3 text-[0.8125rem] font-semibold text-[var(--cue-ink)]">
+          <label htmlFor={controlId} className="block">
+            {label}
+          </label>
+          {labelAction}
+        </div>
       ) : null}
-      {children}
+      {control}
       {error ? (
         <span className="mt-1 block text-[0.8125rem] font-medium text-[var(--cue-absent)]">
           {error}
@@ -644,7 +671,7 @@ export function Field({
       ) : hint ? (
         <span className="type-meta mt-1 block">{hint}</span>
       ) : null}
-    </label>
+    </div>
   );
 }
 

@@ -362,6 +362,7 @@ export function AuthScreen({ mode }: { mode: AuthMode }) {
             value={code}
             onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
             placeholder="12345678"
+            className={native ? "auth-stage-input" : undefined}
           />
         </Field>
         <Button
@@ -445,15 +446,30 @@ export function AuthScreen({ mode }: { mode: AuthMode }) {
   const showsAudience = mode === "sign-up";
   const supportsGoogle = mode === "sign-in" || mode === "sign-up";
   const isSignIn = mode === "sign-in";
+  const nativeSignUpNote =
+    audience === "teacher"
+      ? "Next, enter the teacher invitation code your school issued."
+      : "Next, enter the join code your director shared.";
   /** Inline links keep their text treatment but get a 44px touch box. */
   const nativeLegalLink =
     "inline-flex min-h-11 items-center align-middle font-semibold underline underline-offset-2";
+  /**
+   * Presentation only: the auth provider returns one form-level error string,
+   * so use that existing message to decide which fields look invalid. No
+   * validation or error handling changes here — the message itself is unchanged.
+   */
+  const errorText = native ? (error ?? "") : "";
+  const emailInvalid = Boolean(errorText && /email|invalid login|credentials|confirm/i.test(errorText));
+  const passwordInvalid = Boolean(errorText && /password|invalid login|credentials/i.test(errorText));
+  const confirmInvalid = Boolean(errorText && /those two passwords don't match/i.test(errorText));
+  const stageInputClass = (invalid: boolean): string | undefined =>
+    native ? `auth-stage-input${invalid ? " auth-stage-input--error" : ""}` : undefined;
 
   return (
     <AuthLayout mode={mode}>
       {showsAudience ? (
         <SegmentedControl
-          className={native ? "mb-4" : "mb-5"}
+          className={`auth-audience ${native ? "mb-4" : "mb-5"}`}
           value={audience}
           onChange={chooseAudience}
           options={[
@@ -465,37 +481,80 @@ export function AuthScreen({ mode }: { mode: AuthMode }) {
 
       {/* Keyed to the audience: the copy re-reveals on a switch while the form
           below stays mounted with everything typed. The native shell carries
-          the screen title as a hidden heading, so the form starts at the fields. */}
+          the visible stage headline, so its form starts at the fields. */}
       {native ? null : (
         <div key={showsAudience ? audience : mode} className="cue-stagger">
-          <p className="type-label text-[var(--cue-green)]">
-          {isSignIn
-            ? "Welcome back"
-            : mode === "sign-up"
-              ? copy.kickerUp
-              : mode === "forgot"
-                ? "Password help"
-                : "Recovery link"}
-        </p>
-        <h2 className="type-title mt-2">
-          {isSignIn ? "Sign in" : headline.title}
-        </h2>
-          <p className="type-meta mt-2">
+          {mode === "sign-up" ? (
+            <div className="mb-1 flex items-center gap-3 md:hidden">
+              <Link
+                viewTransition
+                to="/"
+                aria-label="Back to the program"
+                className="motion-press inline-flex min-h-11 min-w-11 items-center justify-center rounded-[var(--radius-control)] text-[var(--cue-ink)]"
+              >
+                <ArrowLeft aria-hidden="true" className="h-5 w-5" />
+              </Link>
+              <img
+                src="/logo.svg"
+                alt=""
+                width={32}
+                height={32}
+                className="h-8 w-8 shrink-0 rounded-[8px]"
+              />
+              <h2 className="type-title whitespace-nowrap text-[1.25rem] leading-tight">Create account</h2>
+            </div>
+          ) : null}
+          <p
+            className={`type-label text-[var(--cue-green)]${
+              mode === "sign-up" ? " hidden md:block" : ""
+            }`}
+          >
             {isSignIn
-              ? "Sign in to open your programs and attendance."
+              ? "Welcome back"
               : mode === "sign-up"
-                ? copy.signUpSub
-                : headline.asideSub}
+                ? copy.kickerUp
+                : mode === "forgot"
+                  ? "Password help"
+                  : "Recovery link"}
+          </p>
+          <h2
+            className={`type-title mt-2${mode === "sign-up" ? " hidden md:block" : ""}`}
+          >
+            {isSignIn ? "Sign in" : headline.title}
+          </h2>
+          <p
+            className={`type-meta mt-2${
+              mode === "sign-up" ? " auth-web-signup-sub" : ""
+            }`}
+          >
+            {isSignIn ? (
+              "Sign in to open your programs and attendance."
+            ) : mode === "sign-up" ? (
+              <>
+                <span className="auth-web-signup-sub-full">{copy.signUpSub}</span>
+                <span className="auth-web-signup-sub-short">
+                  {audience === "teacher" ? "Use your school email." : "Use your program email."}
+                </span>
+              </>
+            ) : (
+              headline.asideSub
+            )}
           </p>
         </div>
       )}
 
       <form
-        className={native ? "mt-4 space-y-3" : "mt-6 space-y-4"}
+        className={
+          native
+            ? "auth-stage-form"
+            : mode === "sign-up"
+              ? "auth-web-signup-form"
+              : "mt-4 space-y-3"
+        }
         onSubmit={(e) => void submit(e)}
       >
         {auth.authLinkError ? <Alert tone="warn">{auth.authLinkError}</Alert> : null}
-        {error ? <Alert tone="error">{error}</Alert> : null}
+        {error && !native ? <Alert tone="error">{error}</Alert> : null}
         {notice ? <Alert tone="warn">{notice}</Alert> : null}
         {existingAccount ? (
           <Link
@@ -508,7 +567,7 @@ export function AuthScreen({ mode }: { mode: AuthMode }) {
           </Link>
         ) : null}
 
-        <Field label="Email">
+        <Field label="Email" className={native ? "auth-stage-field" : undefined}>
           <Input
             type="email"
             value={email}
@@ -518,15 +577,30 @@ export function AuthScreen({ mode }: { mode: AuthMode }) {
             autoCapitalize="none"
             spellCheck={false}
             required
+            className={stageInputClass(emailInvalid)}
+            aria-invalid={emailInvalid ? true : undefined}
+            aria-describedby={native && error ? "auth-form-error" : undefined}
           />
         </Field>
 
         {mode === "forgot" ? null : (
           <Field
             label={mode === "sign-in" ? "Password" : "New password"}
-            hint={
-              mode === "sign-in" ? undefined : "At least 8 characters, or whatever your director asked for."
+            labelAction={
+              native && isSignIn ? (
+                <Link to="/forgot-password" className="auth-stage-label-action">
+                  Forgot password?
+                </Link>
+              ) : native && mode === "sign-up" ? (
+                <span className="auth-stage-label-hint">8+ characters</span>
+              ) : undefined
             }
+            hint={
+              mode === "sign-in" || (native && mode === "sign-up")
+                ? undefined
+                : "At least 8 characters, or whatever your director asked for."
+            }
+            className={native ? "auth-stage-field" : undefined}
           >
             <Input
               type="password"
@@ -535,12 +609,15 @@ export function AuthScreen({ mode }: { mode: AuthMode }) {
               placeholder="••••••••"
               autoComplete={isSignIn ? "current-password" : "new-password"}
               required
+              className={stageInputClass(passwordInvalid)}
+              aria-invalid={passwordInvalid ? true : undefined}
+              aria-describedby={native && error ? "auth-form-error" : undefined}
             />
           </Field>
         )}
 
         {mode === "sign-up" || mode === "reset" ? (
-          <Field label="Confirm password">
+          <Field label="Confirm password" className={native ? "auth-stage-field" : undefined}>
             <Input
               type="password"
               value={confirm}
@@ -548,11 +625,20 @@ export function AuthScreen({ mode }: { mode: AuthMode }) {
               placeholder="••••••••"
               autoComplete="new-password"
               required
+              className={stageInputClass(confirmInvalid)}
+              aria-invalid={confirmInvalid ? true : undefined}
+              aria-describedby={native && error ? "auth-form-error" : undefined}
             />
           </Field>
         ) : null}
 
-        <Button block size="lg" type="submit" loading={busy}>
+        <Button
+          block
+          size="lg"
+          type="submit"
+          loading={busy}
+          className={native ? "auth-stage-primary" : undefined}
+        >
           {isSignIn
             ? "Sign in"
             : mode === "sign-up"
@@ -576,6 +662,15 @@ export function AuthScreen({ mode }: { mode: AuthMode }) {
 
       </form>
 
+      {native && error ? (
+        <p id="auth-form-error" className="auth-stage-error" role="alert">
+          <span aria-hidden="true" className="auth-stage-error-icon">
+            !
+          </span>
+          <span>{error}</span>
+        </p>
+      ) : null}
+
       {/* The code panel sits outside the form: inside it, pressing Enter in the
           code field submitted the *sign-in* form instead, which answered with a
           password error for a password nobody had typed yet. */}
@@ -588,7 +683,7 @@ export function AuthScreen({ mode }: { mode: AuthMode }) {
           <div
             className={
               native
-                ? "my-4 flex items-center gap-3 text-xs text-[var(--cue-muted)]"
+                ? "auth-stage-divider"
                 : "my-5 flex items-center gap-3 text-xs text-[var(--cue-muted)]"
             }
           >
@@ -600,45 +695,55 @@ export function AuthScreen({ mode }: { mode: AuthMode }) {
             block
             variant="secondary"
             loading={busy}
-            icon={<GoogleMark className="h-[18px] w-[18px]" />}
+            icon={<GoogleMark className={native ? "h-5 w-5" : "h-[18px] w-[18px]"} />}
             onClick={() => void continueWithGoogle()}
+            className={native ? "auth-stage-google" : undefined}
           >
             Continue with Google
           </Button>
-          {/* What Google actually shares, stated where the choice is made. */}
-          <p className="mt-2 text-center text-[11px] leading-relaxed text-[var(--cue-muted)]">
-            Google sign-in shares only your name, email address, and Google account ID. We never
-            request access to your Gmail, Google Calendar, or Drive.{" "}
-            <Link
-              to="/privacy"
-              className={native ? nativeLegalLink : "font-semibold underline underline-offset-2"}
-            >
-              Privacy Policy
-            </Link>
-          </p>
+          {native ? (
+            <p className="auth-stage-google-note">
+              Sign in securely with your Google account.
+            </p>
+          ) : (
+            <p className="mt-2 max-md:mt-1 text-center text-[11px] leading-relaxed text-[var(--cue-muted)]">
+              Google sign-in shares only your name, email address, and Google account ID. We never
+              request access to your Gmail, Google Calendar, or Drive.{" "}
+              <Link
+                to="/privacy"
+                className="font-semibold underline underline-offset-2"
+              >
+                Privacy Policy
+              </Link>
+            </p>
+          )}
         </>
       ) : null}
 
-      <div className={native ? "mt-3 text-center text-sm" : "mt-5 space-y-3 text-center text-sm"}>
-        {mode === "sign-in" ? (
+      <div
+        className={
+          native
+            ? "mt-3 text-center text-sm"
+            : `mt-5 space-y-3 text-center text-sm${
+                mode === "sign-up" ? " max-md:mt-2" : ""
+              }`
+        }
+      >
+        {mode === "sign-in" && !native ? (
           <>
-            {/* Every one of these is a real destination on a phone, so each is
-                a 44px target rather than the 18px line box it used to be. */}
             <Link
               to="/forgot-password"
               className="flex min-h-11 items-center justify-center font-semibold text-[var(--cue-green)] underline"
             >
               Forgot your password?
             </Link>
-            {native ? null : (
-              <Link
-                to="/sign-up"
-                className="flex min-h-11 flex-col items-center justify-center text-[var(--cue-muted)]"
-              >
-                New here?
-                <span className="font-semibold underline">Create an account</span>
-              </Link>
-            )}
+            <Link
+              to="/sign-up"
+              className="flex min-h-11 flex-col items-center justify-center text-[var(--cue-muted)]"
+            >
+              New here?
+              <span className="font-semibold underline">Create an account</span>
+            </Link>
           </>
         ) : null}
 
@@ -660,9 +765,18 @@ export function AuthScreen({ mode }: { mode: AuthMode }) {
       </div>
 
       {mode === "sign-up" ? (
-        <p className="mt-3 text-center text-sm leading-relaxed text-[var(--cue-muted)]">
-          {copy.signUpNote}
-        </p>
+        native ? (
+          <p className="auth-stage-signup-note">{nativeSignUpNote}</p>
+        ) : (
+          <>
+            <p className="mt-3 hidden text-center text-sm leading-relaxed text-[var(--cue-muted)] md:block">
+              {copy.signUpNote}
+            </p>
+            <p className="mt-1 text-center text-sm leading-relaxed text-[var(--cue-muted)] md:hidden">
+              {nativeSignUpNote}
+            </p>
+          </>
+        )
       ) : null}
 
       {/* The public notices, one tap from every auth mode. On sign-up this is
@@ -670,8 +784,8 @@ export function AuthScreen({ mode }: { mode: AuthMode }) {
       <p
         className={
           native
-            ? "mt-3 text-center text-[11px] leading-relaxed text-[var(--cue-muted)]"
-            : "mt-4 text-center text-[11px] leading-relaxed text-[var(--cue-muted)]"
+            ? "auth-stage-legal"
+            : "mt-4 max-md:mt-1 text-center text-[11px] leading-relaxed text-[var(--cue-muted)]"
         }
       >
         {mode === "sign-up" ? "By creating an account you agree to our " : ""}
@@ -695,10 +809,10 @@ export function AuthScreen({ mode }: { mode: AuthMode }) {
 }
 
 /**
- * The two-panel shell every auth mode shares: the branded aside on the left with
- * a way back to the landing page, and the form in the panel on the right. Kept
- * identical to the pre-migration design on purpose — swapping the auth provider
- * is not a reason for the page to look different.
+ * The two-panel shell every auth mode shares on desktop: the branded aside on
+ * the left with the app icon and a way back to the landing page, and the form in
+ * the panel on the right. On a phone, create account collapses to one compact
+ * panel so it fits without a page scroll.
  */
 function AuthLayout({ mode, children }: { mode: AuthMode; children: ReactNode }) {
   const copy = MODE_COPY[mode];
@@ -708,9 +822,17 @@ function AuthLayout({ mode, children }: { mode: AuthMode; children: ReactNode })
   }
 
   return (
-    <main className="safe-t flex min-h-full items-center justify-center overflow-y-auto bg-[var(--cue-page)] px-4 py-6 text-[var(--cue-ink)] sm:px-6 sm:py-10">
+    <main
+      className={`safe-t flex min-h-full items-center justify-center overflow-y-auto bg-[var(--cue-page)] px-4 pb-0 pt-3 text-[var(--cue-ink)] sm:px-6 sm:pb-0 sm:pt-3${
+        mode === "sign-up" ? " auth-web-signup-main" : ""
+      }`}
+    >
       <div className="grid w-full max-w-5xl grid-cols-1 overflow-hidden rounded-[var(--radius-panel)] border border-[var(--cue-line)] bg-[var(--cue-panel)] md:min-h-[540px] md:grid-cols-[minmax(0,0.75fr)_minmax(0,1.25fr)]">
-        <aside className="flex flex-col justify-between bg-[var(--cue-brand-panel)] p-5 text-[var(--cue-brand-ink)] sm:p-8 md:p-10">
+        <aside
+          className={`flex-col justify-between bg-[var(--cue-brand-panel)] p-5 text-[var(--cue-brand-ink)] sm:p-8 md:flex md:p-10 ${
+            mode === "sign-up" ? "hidden" : "flex"
+          }`}
+        >
           <div>
             <Link
               viewTransition
@@ -720,7 +842,18 @@ function AuthLayout({ mode, children }: { mode: AuthMode; children: ReactNode })
               <ArrowLeft aria-hidden="true" className="h-4 w-4" />
               Back to the program
             </Link>
-            <p className="type-label mt-10 text-[var(--cue-gold-on-brand)]">{APP_NAME}</p>
+            <div className="mt-10 flex items-center gap-3">
+              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[10px] bg-[var(--cue-brand-ink)] p-1">
+                <img
+                  src="/logo.svg"
+                  alt=""
+                  width={36}
+                  height={36}
+                  className="h-9 w-9 rounded-[8px]"
+                />
+              </span>
+              <p className="type-label text-[var(--cue-gold-on-brand)]">{APP_NAME}</p>
+            </div>
             <h1 className="type-title mt-3 max-w-sm text-[var(--cue-brand-ink)]">{copy.aside}</h1>
             <p className="mt-3 max-w-sm text-sm leading-relaxed text-[var(--cue-brand-ink)]/80">
               {copy.asideSub}
@@ -731,7 +864,11 @@ function AuthLayout({ mode, children }: { mode: AuthMode; children: ReactNode })
           </p>
         </aside>
 
-        <section className="flex items-center justify-center px-5 py-8 sm:px-9 sm:py-10 md:px-12">
+        <section
+          className={`flex items-center justify-center px-5 py-4 sm:px-9 sm:py-4 md:px-12${
+            mode === "sign-up" ? " auth-web-signup-section" : ""
+          }`}
+        >
           <div className="w-full max-w-md">{children}</div>
         </section>
       </div>
@@ -742,78 +879,158 @@ function AuthLayout({ mode, children }: { mode: AuthMode; children: ReactNode })
 /**
  * The native app's auth shell.
  *
- * The website's two-column auth layout is deliberately left alone: a desktop
- * browser gets the branded aside and form panel exactly as before. The app is
- * a one-handed surface, so it gets one slim brand lockup, plain tabs, and the
- * form directly on the page. The old green hero, raised tab track and padded
- * card are gone: together they pushed the primary action and the password exit
- * below the fold on a normal phone.
+ * Only the native build uses this stage. The website keeps its two-column auth
+ * layout. The green hero and cream sheet are one normal-flow composition: the
+ * sheet overlaps the panel by 28px and nothing is fixed. Create account uses a
+ * compact version so its complete form fits a phone viewport; sign-in and the
+ * password modes can still scroll when a short phone or the keyboard needs it.
  */
 function NativeAuthLayout({ mode, children }: { mode: AuthMode; children: ReactNode }) {
-  const copy = MODE_COPY[mode];
   const showModeSwitch = mode === "sign-in" || mode === "sign-up";
-  const tabBase =
-    "relative motion-press flex min-h-11 items-center justify-center px-1 text-sm font-semibold";
-  const activeTab = `${tabBase} text-[var(--cue-ink)]`;
-  const idleTab = `${tabBase} text-[var(--cue-muted)]`;
+  const compactSignup = mode === "sign-up";
+  const headlineLines: Record<AuthMode, [string, string]> = {
+    "sign-in": ["Welcome", "back"],
+    "sign-up": ["Join your", "program"],
+    forgot: ["Forgot your", "password"],
+    reset: ["Set a new", "password"],
+  };
+  const [headlineLead, headlineLast] = headlineLines[mode];
 
   return (
-    <main className="safe-t safe-b flex min-h-full flex-col overflow-y-auto bg-[var(--cue-page)] text-[var(--cue-ink)]">
-      <header className="mx-auto flex w-full max-w-lg items-center gap-3 px-4 py-3">
-        <img src="/logo.svg" alt="" width={40} height={40} className="h-10 w-10 shrink-0" />
-        <div className="min-w-0">
-          <p className="type-wordmark text-[0.9375rem] leading-tight">RHS Music &amp; Arts</p>
-          <p className="type-meta mt-0.5">Attendance · Events · Check-in</p>
+    <main
+      className={`auth-stage min-h-full overflow-y-auto${compactSignup ? " auth-stage--signup" : ""}`}
+    >
+      <header className={`auth-stage-hero${compactSignup ? " auth-stage-hero--compact" : ""}`}>
+        <StageStaff />
+        <div className="auth-stage-hero-inner">
+          <div className="auth-stage-lockup">
+            {compactSignup ? <StageAppIcon /> : <StageMark />}
+            <div className="min-w-0">
+              <p className="auth-stage-eyebrow">Redmond High School</p>
+              <p className="auth-stage-product">Music &amp; Arts Attendance</p>
+            </div>
+          </div>
+
+          <h1
+            className={`auth-stage-headline${compactSignup ? " auth-stage-headline--compact" : ""}`}
+          >
+            {compactSignup ? (
+              <span className="auth-stage-headline-line">
+                Join your program
+                <span className="auth-stage-period">.</span>
+              </span>
+            ) : (
+              <>
+                <span className="auth-stage-headline-line">{headlineLead}</span>
+                <span className="auth-stage-headline-line">
+                  {headlineLast}
+                  <span className="auth-stage-period">.</span>
+                </span>
+              </>
+            )}
+          </h1>
+          <span aria-hidden="true" className="auth-stage-rule" />
+          {compactSignup ? null : (
+            <p className="auth-stage-subline">
+              Attendance, events and check-in for Band, Orchestra, Choir and Drama.
+            </p>
+          )}
         </div>
       </header>
 
-      <div className="mx-auto flex w-full max-w-lg flex-1 flex-col px-4 pb-4">
-        <h1 className="sr-only">{copy.title}</h1>
-
+      <section className="auth-stage-sheet">
         {showModeSwitch ? (
-          <nav
-            aria-label="Account access"
-            className="flex gap-8 border-b border-[var(--cue-line)]"
-          >
+          <nav aria-label="Account access" className="auth-stage-tabs">
             <Link
               to="/sign-in"
               aria-current={mode === "sign-in" ? "page" : undefined}
-              className={mode === "sign-in" ? activeTab : idleTab}
+              className="auth-stage-tab motion-press"
             >
               Sign in
-              {mode === "sign-in" ? (
-                <span
-                  aria-hidden="true"
-                  className="absolute inset-x-0 -bottom-px h-0.5 bg-[var(--cue-green)]"
-                />
-              ) : null}
+              <span aria-hidden="true" className="auth-stage-tab-rule" />
             </Link>
             <Link
               to="/sign-up"
               aria-current={mode === "sign-up" ? "page" : undefined}
-              className={mode === "sign-up" ? activeTab : idleTab}
+              className="auth-stage-tab motion-press"
             >
               Create account
-              {mode === "sign-up" ? (
-                <span
-                  aria-hidden="true"
-                  className="absolute inset-x-0 -bottom-px h-0.5 bg-[var(--cue-green)]"
-                />
-              ) : null}
+              <span aria-hidden="true" className="auth-stage-tab-rule" />
             </Link>
           </nav>
         ) : (
-          <Link
-            to="/sign-in"
-            className="motion-press inline-flex min-h-11 items-center gap-2 self-start text-sm font-semibold text-[var(--cue-green)]"
-          >
+          <Link to="/sign-in" className="auth-stage-back motion-press">
             <span aria-hidden="true">←</span>
             Back to sign in
           </Link>
         )}
 
-        <div className="pt-4">{children}</div>
-      </div>
+        {children}
+      </section>
     </main>
+  );
+}
+
+/** The shipped app icon, shown on the native create-account lockup. */
+function StageAppIcon() {
+  return (
+    <span className="auth-stage-mark p-1.5" aria-hidden="true">
+      <img
+        src="/logo.svg"
+        alt=""
+        width={28}
+        height={28}
+        className="h-7 w-7 rounded-[7px]"
+      />
+    </span>
+  );
+}
+
+/** The native stage's cream app mark: green note, gold flag. */
+function StageMark() {
+  return (
+    <span className="auth-stage-mark" aria-hidden="true">
+      <svg viewBox="0 0 40 40" className="h-[26px] w-[26px]" focusable="false">
+        <ellipse
+          cx="15"
+          cy="28"
+          rx="6"
+          ry="4.4"
+          transform="rotate(-18 15 28)"
+          fill="var(--auth-stage-green)"
+        />
+        <rect x="19" y="8" width="2.4" height="20" rx="1.2" fill="var(--auth-stage-green)" />
+        <path
+          d="M21.4 8 C 27 9.4 30.4 13.2 31.1 18.8 C 28.4 14.8 25.1 12.4 21.4 11.5 Z"
+          fill="var(--auth-stage-gold)"
+        />
+      </svg>
+    </span>
+  );
+}
+
+/** Decorative staff lines and one gold eighth note, bleeding off the right. */
+function StageStaff() {
+  return (
+    <svg
+      aria-hidden="true"
+      focusable="false"
+      viewBox="0 0 420 380"
+      preserveAspectRatio="xMidYMid slice"
+      className="auth-stage-staff"
+    >
+      <g stroke="var(--auth-stage-staff-line)" strokeWidth="1">
+        <path d="M-24 174H444" />
+        <path d="M-24 204H444" />
+        <path d="M-24 234H444" />
+        <path d="M-24 264H444" />
+        <path d="M-24 294H444" />
+      </g>
+      <g transform="translate(360 234) rotate(6)" fill="var(--auth-stage-gold)" opacity="0.92">
+        <ellipse cx="0" cy="0" rx="12" ry="9" transform="rotate(-20)" />
+        <rect x="9" y="-92" width="4" height="92" rx="2" />
+        <path d="M13 -92 C 34 -86 45 -74 48 -52 C 38 -68 27 -78 13 -82 Z" />
+      </g>
+    </svg>
   );
 }
