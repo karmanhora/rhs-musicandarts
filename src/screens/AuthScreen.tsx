@@ -465,7 +465,7 @@ export function AuthScreen({ mode }: { mode: AuthMode }) {
 
       {/* Keyed to the audience: the copy re-reveals on a switch while the form
           below stays mounted with everything typed. The native shell carries
-          the same heading in its stage, so the form starts at the fields. */}
+          the screen title as a hidden heading, so the form starts at the fields. */}
       {native ? null : (
         <div key={showsAudience ? audience : mode} className="cue-stagger">
           <p className="type-label text-[var(--cue-green)]">

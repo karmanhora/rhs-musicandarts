@@ -103,7 +103,10 @@ export function NativeOpeningScreen({ leaving = false }: { leaving?: boolean }) 
             Attendance · Events · Check-in
           </p>
         </div>
-        <MusicLoader />
+        {/* The overlay already has the status role and its own label. */}
+        <div aria-hidden="true">
+          <MusicLoader />
+        </div>
         <LoadingQuote className="mt-1 max-w-xs" />
       </div>
     </div>
