@@ -1,14 +1,15 @@
 # iOS and TestFlight
 
-This is the release guide for the Capacitor iOS app. The native shell, URL
-scheme and camera permission are already set up; this document covers building,
-signing, uploading and the manual settings that live outside the repository.
+This is the release guide for the Capacitor iOS app. The native shell, ML Kit
+scanner, URL scheme and camera permission are already set up; this document
+covers building, signing, uploading and the manual settings that live outside
+the repository.
 
 ## What ships
 
 - The bundled web build from `dist/`; there is no `server.url`.
 - App id `org.rhsattendance.app`, display name `RHS Music & Arts`.
-- iPhone only, portrait only, minimum iOS 15.0 (Capacitor 8's floor).
+- iPhone only, portrait only, minimum iOS 15.5 (ML Kit's floor).
 - Marketing version `1.0.0`, build `1`.
 - The real app icon rendered from `public/logo.svg`, with no alpha channel.
 - A solid brand-green launch screen, so there is no white flash.
@@ -18,14 +19,18 @@ signing, uploading and the manual settings that live outside the repository.
 - `ITSAppUsesNonExemptEncryption = false`.
 - Email/password auth only on iOS by default. Google sign-in is hidden behind
   `NATIVE_GOOGLE_SIGNIN` in `src/lib/nativeAuth.ts`.
+- The iOS camera button opens ML Kit's native barcode scanner. The website keeps
+  the `html5-qrcode` path.
 
 ## Prerequisites
 
 - Node 22+ and npm.
-- Xcode with an iOS SDK that supports iOS 15.0+.
+- Xcode with an iOS SDK that supports iOS 15.5+.
 - An Apple Developer team with the `org.rhsattendance.app` bundle id.
-- The project uses Swift Package Manager (`ios/App/CapApp-SPM`). There is no
-  Podfile and `pod install` is not part of this build.
+- CocoaPods. The project uses `ios/App/Podfile` and
+  `ios/App/App.xcworkspace`; ML Kit does not publish an SPM package.
+- Run `pod install` from `ios/App` once after cloning, or let `npx cap sync ios`
+  run it for you. Use `LC_ALL=en_US.UTF-8` if CocoaPods reports a locale error.
 
 ## Install and build
 
@@ -40,8 +45,31 @@ npx cap open ios
 ```
 
 `npm run cap:sync` runs the production build and sync in one step. `npm run
-cap:ios` opens Xcode. After any change to `src/`, `capacitor.config.ts` or a
-Capacitor plugin, rerun the build and sync before archiving.
+cap:ios` opens the CocoaPods workspace. After any change to `src/`,
+`capacitor.config.ts` or a Capacitor plugin, rerun the build and sync before
+archiving.
+
+## Running it
+
+The reliable way to exercise the ML Kit scanner is a physical iPhone. Open the
+workspace with `npx cap open ios`, choose the **App** scheme and your iPhone,
+then Run. The camera permission prompt appears the first time you tap **Open
+camera scanner**.
+
+The iOS Simulator can compile the x86_64 slice:
+
+```bash
+xcodebuild -workspace ios/App/App.xcworkspace -scheme App \
+  -configuration Debug -sdk iphonesimulator \
+  -destination 'generic/platform=iOS Simulator' \
+  ARCHS=x86_64 ONLY_ACTIVE_ARCH=NO build CODE_SIGNING_ALLOWED=NO
+```
+
+That binary cannot be installed on an Apple Silicon simulator: ML Kit ships
+device arm64 and simulator x86_64 slices, but no arm64-simulator slice. The
+simulator therefore reports that the app needs to be updated. Use a physical
+iPhone (or an Intel Mac's simulator) to run the scanner. The ordinary
+`npx cap run ios` simulator path will fail at the same link/installation step.
 
 ## Signing
 
@@ -111,11 +139,10 @@ Web Google sign-in is unaffected by this flag.
 
 ## Known limitations at 1.0.0
 
-- **QR scanning uses the web camera path inside WKWebView.** The ML Kit plugin
-  supports Capacitor 8, but its iOS package is CocoaPods-only and this project
-  uses SPM. Adding it requires a project-wide move to CocoaPods; that was not
-  done in this release. The camera element is explicitly inline (`playsinline`),
-  square and bounded as a safe fallback.
+- **The native scanner cannot run in the Apple Silicon Simulator.** ML Kit's
+  binaries have no arm64-simulator slice. The x86_64 simulator build succeeds,
+  but the arm64-only simulator will not install it. Use a physical iPhone for a
+  real scan.
 - **No Sign in with Apple.** Apple sign-in was not built.
 - **No push notifications.** Email digests and in-app notifications exist; APNs
   does not.
@@ -132,34 +159,34 @@ Web Google sign-in is unaffected by this flag.
 
 ## Verification status
 
-The release checks used in this pass are:
-
-```bash
-npm run typecheck
-npm run build
-npx cap sync ios
-```
-
-The release checks run after the native keyboard change were:
+The release checks run after the ML Kit migration were:
 
 ```bash
 npm run typecheck
 npm run build
 npx cap sync ios
 npm run test:qa
-xcodebuild -project ios/App/App.xcodeproj -scheme App \
-  -configuration Debug -sdk iphonesimulator \
-  -destination 'platform=iOS Simulator,id=B79F0A91-3B63-4A64-AD9E-2A071325165B' \
+xcodebuild -workspace ios/App/App.xcworkspace -scheme App \
+  -configuration Release -sdk iphoneos \
+  -destination 'generic/platform=iOS' \
   build CODE_SIGNING_ALLOWED=NO
-bash scripts/dev/verify_migrations_locally.sh
+xcodebuild -workspace ios/App/App.xcworkspace -scheme App \
+  -configuration Debug -sdk iphonesimulator \
+  -destination 'generic/platform=iOS Simulator' \
+  ARCHS=x86_64 ONLY_ACTIVE_ARCH=NO \
+  build CODE_SIGNING_ALLOWED=NO
 ```
 
-The QA suite passed all 101 tests, the simulator build succeeded, the app
-launched on the iPhone 15 simulator, and the local database run applied 57
-migrations with 28 suites passing (one legacy-schema suite skipped).
+The QA suite passed all 101 tests, the device and x86_64 simulator builds
+succeeded, and the local database run applied 57 migrations with 28 suites
+passing (one legacy-schema suite skipped). The built device app declares
+iOS 15.5, contains the camera usage description, `PrivacyInfo.xcprivacy`, and
+the `BarcodeScannerPlugin` class.
 
-A focused browser diagnostic at a 390x844 iPhone viewport, with a fake camera,
-confirmed that the scan pane opens a square inline video with non-zero frames
-and no horizontal overflow. The simulator has no camera and no physical iPhone
-was attached, so a real on-device QR scan is still required. Screenshots were
-not part of this pass.
+The simulator binary could not be installed on the Apple Silicon simulator
+because ML Kit has no arm64-simulator slice. A real iPhone scan is still
+required; screenshots were not part of this pass.
+
+The website fallback was rechecked separately at a 390x844 viewport with a fake
+camera after the wrapper change: the inline video was visible, playing, inline
+(`playsinline`), non-zero, and did not overflow horizontally.

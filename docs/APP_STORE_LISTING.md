@@ -135,8 +135,8 @@ details. Use the review/demo program and fictional or redacted roster names.
 
 ## What not to claim
 
-- Do not claim offline use, push notifications, Sign in with Apple, native ML Kit
-  scanning or iPad support; none ship in 1.0.0.
+- Do not claim offline use, push notifications, Sign in with Apple or iPad
+  support; none ship in 1.0.0. Native ML Kit scanning does ship on iPhone.
 - Do not claim district endorsement or official school ownership. The app is an
   independent tool used by school programs.
 - Do not describe attendance deletion as complete: attendance is retained

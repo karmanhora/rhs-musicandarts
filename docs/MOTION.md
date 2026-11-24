@@ -136,8 +136,9 @@ never the only signal that an action succeeded or failed.
 
 No animation library is added. CSS cubic-bezier presets and a small
 `navigator.vibrate` guard cover the implemented needs without a runtime motion
-dependency. QR scanning remains dynamically imported by `QrScanner`; screen
-routes are lazy-loaded.
+dependency. Both camera paths are dynamically imported — the web reader by
+`QrScanner`, and the iOS ML Kit plugin by `NativeQrScanner`; screen routes are
+lazy-loaded.
 
 The note field is the one addition with a real runtime cost, so it is kept off
 the first paint: `NotesField` has no static import into `src/components/notes/`,

@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from "react";
+import { isNativeApp } from "../lib/nativeAuth";
+import { NativeQrScanner } from "./NativeQrScanner";
 
 const ELEMENT_ID = "band-qr-reader";
 
@@ -26,14 +28,27 @@ function cameraErrorMessage(error: unknown): string {
 }
 
 /**
- * Camera QR reader. `html5-qrcode` is imported lazily so the ~300 kB library
+ * Choose the camera implementation once per render. The iOS shell uses ML Kit's
+ * native scanner; the website keeps the html5-qrcode fallback below.
+ */
+export function QrScanner(props: {
+  active: boolean;
+  onDecode: (text: string) => void;
+  onError?: (message: string) => void;
+}) {
+  if (isNativeApp()) return <NativeQrScanner {...props} />;
+  return <WebQrScanner {...props} />;
+}
+
+/**
+ * Web camera QR reader. `html5-qrcode` is imported lazily so the ~300 kB library
  * never lands in the initial bundle, and the camera is torn down the moment
  * `active` goes false (leaving a screen must always release the camera).
  *
  * `onDecode` MUST be wrapped in `useCallback` by the caller — a new function
  * identity restarts the camera.
  */
-export function QrScanner({
+function WebQrScanner({
   active,
   onDecode,
   onError,
