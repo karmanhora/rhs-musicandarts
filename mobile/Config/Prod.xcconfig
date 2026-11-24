@@ -1,0 +1,12 @@
+// Release / production build.
+//
+// No App Store record exists for this identifier, and creating one is outside
+// the scope of Phase 1. Do not reuse org.rhsattendance.app — that identifier,
+// its provisioning profile and its App Store record belong to the Capacitor app.
+#include? "Local.xcconfig"
+
+PRODUCT_BUNDLE_IDENTIFIER = org.rhsattendance.native
+RHS_BUILD_ENVIRONMENT = production
+RHS_APP_DISPLAY_NAME = RHS Music & Arts
+
+// Auth callback: org.rhsattendance.native://auth-callback

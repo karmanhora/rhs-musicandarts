@@ -1,0 +1,13 @@
+// Debug / development build.
+//
+// The bundle identifier is deliberately NOT org.rhsattendance.app: that id
+// belongs to the Capacitor app in /ios and its App Store record. This target is
+// a separate native app, so it needs its own id and its own redirect scheme.
+#include? "Local.xcconfig"
+
+PRODUCT_BUNDLE_IDENTIFIER = org.rhsattendance.native.dev
+RHS_BUILD_ENVIRONMENT = development
+RHS_APP_DISPLAY_NAME = RHS Music & Arts Dev
+
+// The auth callback scheme is the bundle identifier (see Config/Info.plist),
+// so this build answers org.rhsattendance.native.dev://auth-callback.

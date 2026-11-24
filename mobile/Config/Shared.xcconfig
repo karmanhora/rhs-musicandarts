@@ -1,0 +1,16 @@
+// Settings shared by every configuration and target of the native app.
+// Development and production differences live in Dev.xcconfig / Prod.xcconfig.
+
+IPHONEOS_DEPLOYMENT_TARGET = 17.0
+SWIFT_VERSION = 6.0
+SWIFT_STRICT_CONCURRENCY = complete
+TARGETED_DEVICE_FAMILY = 1
+SUPPORTED_PLATFORMS = iphoneos iphonesimulator
+SDKROOT = iphoneos
+CODE_SIGN_STYLE = Automatic
+ENABLE_USER_SCRIPT_SANDBOXING = YES
+SWIFT_EMIT_LOC_STRINGS = NO
+LOCALIZATION_PREFERS_STRING_CATALOGS = YES
+
+// Shown in the app and used for the launch screen's name.
+RHS_APP_DISPLAY_NAME = RHS Music & Arts

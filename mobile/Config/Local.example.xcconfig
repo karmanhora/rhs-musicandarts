@@ -1,0 +1,15 @@
+// Copy this file to Config/Local.xcconfig and fill in the two public values.
+// Local.xcconfig is gitignored: it is machine-local configuration, never a
+// committed secret. These are the same two public values the website uses
+// (VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in .env.local).
+//
+// Both are public by design. The anon / publishable key grants nothing on its
+// own because every table is behind RLS. The service-role key must never appear
+// here, in Info.plist, or anywhere else in the app bundle.
+//
+// Xcode's xcconfig parser treats "//" as the start of a comment, so the "//" in
+// a URL is written with the conventional empty-substitution escape: https:/$()/.
+// Copy the escape exactly as shown.
+
+SUPABASE_URL = https:/$()/YOUR-PROJECT.supabase.co
+SUPABASE_ANON_KEY = YOUR-ANON-OR-PUBLISHABLE-KEY

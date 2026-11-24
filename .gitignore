@@ -47,3 +47,12 @@ ios/App/Pods/
 ios/App/build/
 ios/DerivedData/
 ios/App/App/public/
+
+# Native iOS app (mobile/): machine-local configuration and Xcode artefacts.
+# Local.xcconfig holds the same public Supabase values as .env.local; it is
+# still never committed, so no environment value is taken from the repository.
+mobile/Config/Local.xcconfig
+mobile/**/xcuserdata/
+mobile/RHSApp.xcodeproj/project.xcworkspace/xcuserdata/
+mobile/DerivedData/
+mobile/.build/
