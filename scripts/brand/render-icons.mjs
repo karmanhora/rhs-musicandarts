@@ -9,10 +9,13 @@
  * file* rather than a second drawing that slowly drifts out of sync. Chrome is
  * the rasterizer we always have on hand — no npm dependency, no ImageMagick.
  *
- * The three variants the manifest and iOS need:
+ * The variants the manifest and iOS need:
  *   badge     the rounded badge on transparency (purpose "any")
  *   full      the green square, no rounding — iOS masks apple-touch-icon itself
  *   maskable  full bleed, glyph pulled inside the 80% safe circle (Android)
+ *
+ * The iOS app icon is also rendered here so it never drifts from the web mark.
+ * It is opaque because App Store Connect rejects app icons with alpha.
  *
  * When the real artwork arrives, replace `public/logo.svg` and re-run this. If
  * the new mark is not a full-bleed square, adjust `svgFor()` below — nothing
@@ -27,6 +30,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 const root = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const svgPath = join(root, "public", "logo.svg");
 const publicDir = join(root, "public");
+const iosAppIconDir = join(root, "ios", "App", "App", "Assets.xcassets", "AppIcon.appiconset");
 
 /** Rounding of the shipped badge, and the glyph scale inside the Android safe zone. */
 const BADGE_RADIUS = 112;
@@ -38,6 +42,7 @@ const TARGETS = [
   { file: "icon-512.png", size: 512, mode: "badge" },
   { file: "icon-maskable-192.png", size: 192, mode: "maskable" },
   { file: "icon-maskable-512.png", size: 512, mode: "maskable" },
+  { file: "AppIcon-512@2x.png", size: 1024, mode: "full", dir: iosAppIconDir, opaque: true },
 ];
 
 /**
@@ -105,7 +110,11 @@ ${svgFor(mode)}
 `;
 }
 
-function render(chrome, htmlPath, outPath, size, profileDir) {
+function render(chrome, htmlPath, outPath, size, profileDir, opaque) {
+  // Chrome clamps small window sizes and device scale factors. The app icon is
+  // large enough to render one-to-one at 1024px; the smaller web icons keep the
+  // 512px layout and scale down to their exact size.
+  const viewport = Math.max(size, RENDER_VIEWPORT);
   execFileSync(
     chrome,
     [
@@ -116,12 +125,12 @@ function render(chrome, htmlPath, outPath, size, profileDir) {
       "--disable-extensions",
       "--disable-sync",
       "--hide-scrollbars",
-      `--force-device-scale-factor=${size / RENDER_VIEWPORT}`,
-      // ARGB with a zero alpha channel: keeps the icons that rely on
-      // transparency from arriving on a white plate.
-      "--default-background-color=00000000",
+      `--force-device-scale-factor=${size / viewport}`,
+      // Transparent icons need an alpha channel; the iOS app icon must not
+      // have one, so it is rendered against the brand green instead.
+      `--default-background-color=${opaque ? "ff214d35" : "00000000"}`,
       `--user-data-dir=${profileDir}`,
-      `--window-size=${RENDER_VIEWPORT},${RENDER_VIEWPORT}`,
+      `--window-size=${viewport},${viewport}`,
       `--screenshot=${outPath}`,
       pathToFileURL(htmlPath).href,
     ],
@@ -132,12 +141,25 @@ function render(chrome, htmlPath, outPath, size, profileDir) {
   return bytes;
 }
 
-/** PNG stores width/height as big-endian uint32 at bytes 16-24 (IHDR). */
-function pngSize(file) {
+/** PNG stores the dimensions and colour type in IHDR (bytes 16–25). */
+function pngInfo(file) {
   const buf = readFileSync(file);
   const sig = buf.subarray(0, 8).toString("hex");
   if (sig !== "89504e470d0a1a0a") throw new Error(`${file} is not a PNG.`);
-  return { width: buf.readUInt32BE(16), height: buf.readUInt32BE(20) };
+  return {
+    width: buf.readUInt32BE(16),
+    height: buf.readUInt32BE(20),
+    // 2 = truecolour (RGB), 6 = truecolour with alpha (RGBA).
+    colorType: buf.readUInt8(25),
+  };
+}
+
+const requested = new Set(process.argv.slice(2));
+const targets = requested.size
+  ? TARGETS.filter((target) => requested.has(target.file))
+  : TARGETS;
+if (targets.length === 0) {
+  throw new Error(`No icon target matched: ${[...requested].join(", ")}`);
 }
 
 const chrome = findChrome();
@@ -145,18 +167,21 @@ const workDir = mkdtempSync(join(tmpdir(), "rhs-icons-"));
 const profileDir = join(workDir, "profile");
 
 try {
-  for (const target of TARGETS) {
+  for (const target of targets) {
     const htmlPath = join(workDir, `${target.mode}-${target.size}.html`);
-    const outPath = join(publicDir, target.file);
+    const outPath = join(target.dir ?? publicDir, target.file);
     writeFileSync(htmlPath, htmlFor(target.mode));
-    const bytes = render(chrome, htmlPath, outPath, target.size, profileDir);
-    const { width, height } = pngSize(outPath);
+    const bytes = render(chrome, htmlPath, outPath, target.size, profileDir, target.opaque);
+    const { width, height, colorType } = pngInfo(outPath);
     if (width !== target.size || height !== target.size) {
       throw new Error(`${target.file} came out ${width}x${height}, expected ${target.size}x${target.size}.`);
     }
+    if (target.opaque && colorType !== 2) {
+      throw new Error(`${target.file} has a PNG alpha channel; App Store icons must be opaque RGB.`);
+    }
     console.log(`  ${target.file.padEnd(24)} ${width}x${height}  ${target.mode.padEnd(8)} ${bytes} bytes`);
   }
-  console.log(`\n${TARGETS.length} icons rendered from public/logo.svg with ${chrome}`);
+  console.log(`\n${targets.length} icon${targets.length === 1 ? "" : "s"} rendered from public/logo.svg with ${chrome}`);
 } finally {
   rmSync(workDir, { recursive: true, force: true });
 }
