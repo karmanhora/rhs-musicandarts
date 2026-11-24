@@ -25,7 +25,7 @@ exists, but nothing in the code assumes it is the only one.
 | `scripts/migrate/` | The clone pipeline: dump OLD → restore → migrate → verify |
 | `scripts/brand/` | Renders the PNG icons from `public/logo.svg` with a headless browser |
 | `scripts/dev/` | `verify_migrations_locally.sh` — applies every migration and runs every suite against a throwaway local database; `check_teacher_invite_race.sh` — two real connections racing for one invitation code; `check_event_digest.mjs`, `check_event_reminders.mjs` and `check_makeup_emails.mjs` — the mail senders with the network stubbed |
-| `docs/` | This file, the platform plan, [`AUTH_MIGRATION.md`](AUTH_MIGRATION.md), [`TEACHER_VERIFICATION.md`](TEACHER_VERIFICATION.md), [`EMAIL_SETUP.md`](EMAIL_SETUP.md), [`BRAND_ASSETS.md`](BRAND_ASSETS.md), [`SECURITY_HEADERS.md`](SECURITY_HEADERS.md) |
+| `docs/` | This file, the platform plan, [`AUTH_MIGRATION.md`](AUTH_MIGRATION.md), [`TEACHER_VERIFICATION.md`](TEACHER_VERIFICATION.md), [`EMAIL_SETUP.md`](EMAIL_SETUP.md), [`BRAND_ASSETS.md`](BRAND_ASSETS.md), [`SECURITY_HEADERS.md`](SECURITY_HEADERS.md), [`IOS.md`](IOS.md) and the [App Store listing draft](APP_STORE_LISTING.md) |
 | `reference/RHS-BAND/` | Read-only clone of the old app, for conventions only |
 | `.tools/pgsql/bin` | Portable PostgreSQL 18 client used by the migration scripts (gitignored) |
 
@@ -132,6 +132,10 @@ npm run build          # typecheck + production bundle
 npm run preview        # serve the built bundle
 npm run check:headers  # vercel.json headers + CSP inline-script hashes (see docs/SECURITY_HEADERS.md)
 ```
+
+For the Capacitor iOS build, signing and TestFlight upload, see
+[`IOS.md`](IOS.md). App Store listing text and the App Privacy answers that match
+`ios/App/App/PrivacyInfo.xcprivacy` are in [`APP_STORE_LISTING.md`](APP_STORE_LISTING.md).
 
 ## 4. Authentication (Supabase Auth is the only auth system)
 

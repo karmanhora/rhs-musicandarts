@@ -4,6 +4,12 @@ A centralized attendance management platform for the music and arts programs at 
 
 🌐 **Website:** https://rhsattendance.org
 
+## iOS app
+
+The Capacitor iOS build, signing and TestFlight steps are in
+[docs/IOS.md](docs/IOS.md). Ready-to-paste App Store copy and App Privacy answers
+are in [docs/APP_STORE_LISTING.md](docs/APP_STORE_LISTING.md).
+
 ## About
 
 RHS Music & Arts Attendance is a web-based platform designed to simplify attendance tracking for Redmond High School's music and arts programs.
