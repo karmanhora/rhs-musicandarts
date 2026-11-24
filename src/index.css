@@ -608,6 +608,30 @@ a[href] {
   touch-action: manipulation;
 }
 
+/*
+ * Native shell only. Pinch zoom is disabled in `nativeShell.ts`'s viewport;
+ * these rules finish the job inside the WebView. Text selection stays available
+ * for prose and form fields, but not for controls that only look tappable.
+ */
+html.native-app {
+  overscroll-behavior: none;
+  touch-action: pan-x pan-y;
+  -webkit-text-size-adjust: 100%;
+}
+
+html.native-app body {
+  overscroll-behavior: none;
+}
+
+html.native-app button,
+html.native-app [role="button"],
+html.native-app nav,
+html.native-app nav * {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
 /* Keyboard focus is always visible — never removed, only styled. */
 :focus-visible {
   outline: 2px solid var(--cue-focus);

@@ -4,6 +4,7 @@ import { BrowserRouter } from "react-router-dom";
 import App from "./App";
 import { ConfigMissingScreen } from "./screens/ConfigMissingScreen";
 import { isBackendConfigured } from "./lib/backend-config";
+import { initNativeShell } from "./lib/nativeShell";
 import "@fontsource/barlow-condensed/latin-600.css";
 import "@fontsource/barlow-condensed/latin-700.css";
 import "@fontsource/fraunces/latin-500.css";
@@ -22,6 +23,8 @@ const missing: string[] = [];
 if (!isBackendConfigured) {
   missing.push("VITE_SUPABASE_URL", "VITE_SUPABASE_ANON_KEY");
 }
+
+initNativeShell();
 
 const container = document.getElementById("root");
 if (!container) throw new Error("Missing #root element");
