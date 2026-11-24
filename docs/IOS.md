@@ -17,8 +17,8 @@ the repository.
   and attendance/user content collected for app functionality and linked to the
   user.
 - `ITSAppUsesNonExemptEncryption = false`.
-- Email/password auth only on iOS by default. Google sign-in is hidden behind
-  `NATIVE_GOOGLE_SIGNIN` in `src/lib/nativeAuth.ts`.
+- Email/password auth in App Store builds. Google sign-in is available only in
+  the local `ios-dev` build and is never part of an App Store archive.
 - The iOS camera button opens ML Kit's native barcode scanner. The website keeps
   the `html5-qrcode` path.
 
@@ -38,16 +38,23 @@ From the repository root:
 
 ```bash
 npm install
+cp .env.ios.example .env.ios.local   # fill in the hosted project values
 npm run typecheck
-npm run build
-npx cap sync ios
-npx cap open ios
+npm run cap:sync
+npm run cap:ios
 ```
 
-`npm run cap:sync` runs the production build and sync in one step. `npm run
-cap:ios` opens the CocoaPods workspace. After any change to `src/`,
-`capacitor.config.ts` or a Capacitor plugin, rerun the build and sync before
-archiving.
+`npm run cap:sync` builds with the `ios` Vite mode and syncs the result into
+`ios/App`. That mode reads `.env.ios.local`, which has higher priority than the
+web-development `.env.local`; the build fails if the URL is localhost, so an
+iOS archive cannot accidentally point at the local stack. `npm run cap:ios`
+opens the CocoaPods workspace. After any change to `src/`, `capacitor.config.ts`
+or a Capacitor plugin, rerun the build and sync before archiving.
+
+For local simulator work with Google enabled, create `.env.ios-dev.local` from
+`.env.ios-dev.example` and run `npm run cap:sync:dev`. That uses the `ios-dev`
+mode, which is not an App Store build. The ML Kit simulator limitation below
+still applies to the native binary.
 
 ## Running it
 
@@ -120,22 +127,29 @@ capability is required.
 Internal testing does not need a review. External TestFlight testing and App
 Store submission do.
 
-## Google sign-in toggle
+## Google sign-in and guideline 4.8
 
-`src/lib/nativeAuth.ts` exports:
+`src/lib/nativeAuth.ts` reads `VITE_NATIVE_GOOGLE_SIGNIN`:
 
 ```ts
-export const NATIVE_GOOGLE_SIGNIN = false;
+export const NATIVE_GOOGLE_SIGNIN =
+  import.meta.env.VITE_NATIVE_GOOGLE_SIGNIN === "true";
 ```
 
-The default is deliberate: Apple guideline 4.8 expects a native app that offers
-a third-party login to offer an equivalent privacy-preserving option. Email and
-password remain available. Flipping the flag to `true` restores the existing
-Google button and privacy note on iOS; do not do that without also deciding how
-the app satisfies guideline 4.8 (for example by adding Sign in with Apple) and
-re-testing the OAuth browser handoff.
+- The `ios` release mode never sets that variable. App Store and TestFlight
+  builds therefore offer email/password only, so guideline 4.8 is not
+  triggered by a third-party login option. `vite.config.ts` refuses an `ios`
+  build that tries to set the Google flag.
+- The `ios-dev` mode reads `.env.ios-dev.local`, where the flag is `true`.
+  That build is for the local simulator and must not be uploaded. It uses the
+  same hosted Supabase project as release, so the OAuth handoff is real.
+- Web Google sign-in is unaffected by this flag.
 
-Web Google sign-in is unaffected by this flag.
+If the owner later wants Google in the shipping app, that is a separate
+product decision: add Sign in with Apple (or another equally prominent
+privacy-preserving option) and re-test both flows before archiving. The
+repository does not contain an Apple Developer team, a Sign in with Apple
+entitlement or an Apple provider secret.
 
 ## Known limitations at 1.0.0
 

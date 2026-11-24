@@ -2,6 +2,8 @@
 .env
 .env.*
 !.env.example
+!.env.ios.example
+!.env.ios-dev.example
 *.key
 *.pem
 

@@ -6,9 +6,12 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "build:ios": "tsc -b && vite build --mode ios",
+    "build:ios:dev": "tsc -b && vite build --mode ios-dev",
     "preview": "vite preview",
     "typecheck": "tsc -b --noEmit",
-    "cap:sync": "npm run build && npx cap sync",
+    "cap:sync": "npm run build:ios && npx cap sync ios",
+    "cap:sync:dev": "npm run build:ios:dev && npx cap sync ios",
     "cap:ios": "npx cap open ios",
     "check:headers": "node scripts/dev/check_security_headers.mjs",
     "test:e2e": "playwright test",

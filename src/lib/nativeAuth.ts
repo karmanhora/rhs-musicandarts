@@ -14,11 +14,13 @@ export const NATIVE_AUTH_SCHEME = "org.rhsattendance.app";
 export const NATIVE_AUTH_REDIRECT = `${NATIVE_AUTH_SCHEME}://auth-callback`;
 
 /**
- * Apple guideline 4.8: the native build ships email + password only unless
+ * Apple guideline 4.8: the App Store build ships email + password only unless
  * the owner explicitly adds an equally prominent privacy-preserving login.
- * Flip this one flag to restore the existing Google button on iOS.
+ * The `ios-dev` Vite mode turns Google on for the local simulator; the `ios`
+ * release mode never reads that development flag.
  */
-export const NATIVE_GOOGLE_SIGNIN = false;
+export const NATIVE_GOOGLE_SIGNIN =
+  import.meta.env.VITE_NATIVE_GOOGLE_SIGNIN === "true";
 
 const PENDING_OAUTH_KEY = "rhs-music-arts-native-oauth";
 const PENDING_OAUTH_MAX_AGE_MS = 30 * 60 * 1000;

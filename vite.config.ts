@@ -1,4 +1,4 @@
-import { defineConfig } from "vite";
+import { defineConfig, loadEnv } from "vite";
 import type { Plugin } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
@@ -33,24 +33,52 @@ function licenseRoutePlugin(): Plugin {
   };
 }
 
-export default defineConfig({
-  envPrefix: ["VITE_", "NEXT_PUBLIC_"],
-  // The WGSL loader prepares the landing-page note shader at build time, so the
-  // WGSL parser never ships to the browser. It is only reached through the
-  // landing page's lazy `notes` chunk, so first paint is unaffected.
-  plugins: [licenseRoutePlugin(), react(), tailwindcss(), wgslVitePlugin()],
-  build: {
-    rollupOptions: {
-      output: {
-        // Keep the heavy, rarely-needed bundle out of the first paint: the QR
-        // scanner (html5-qrcode + qrcode.react) only matters on the check-in
-        // screens, which are behind the sign-in.
-        manualChunks(id) {
-          if (id.includes("html5-qrcode") || id.includes("qrcode.react")) {
-            return "qr";
-          }
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, process.cwd(), "VITE_");
+  const isIosBuild = mode === "ios" || mode === "ios-dev";
+
+  if (isIosBuild) {
+    const url = env.VITE_SUPABASE_URL ?? "";
+    if (!url || !env.VITE_SUPABASE_ANON_KEY) {
+      throw new Error(
+        `The ${mode} build needs VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in ` +
+          `.env.${mode}.local. Copy the matching .env example and fill it in.`
+      );
+    }
+    if (/localhost|127\.0\.0\.1/i.test(url)) {
+      throw new Error(
+        `The ${mode} build must use the hosted Supabase project, not ${url}. ` +
+          "Set VITE_SUPABASE_URL in the iOS env file; .env.local is for web development."
+      );
+    }
+  }
+
+  if (mode === "ios" && env.VITE_NATIVE_GOOGLE_SIGNIN === "true") {
+    throw new Error(
+      "VITE_NATIVE_GOOGLE_SIGNIN is development-only. An App Store build must " +
+        "ship without Google unless Sign in with Apple is added (guideline 4.8)."
+    );
+  }
+
+  return {
+    envPrefix: ["VITE_", "NEXT_PUBLIC_"],
+    // The WGSL loader prepares the landing-page note shader at build time, so the
+    // WGSL parser never ships to the browser. It is only reached through the
+    // landing page's lazy `notes` chunk, so first paint is unaffected.
+    plugins: [licenseRoutePlugin(), react(), tailwindcss(), wgslVitePlugin()],
+    build: {
+      rollupOptions: {
+        output: {
+          // Keep the heavy, rarely-needed bundle out of the first paint: the QR
+          // scanner (html5-qrcode + qrcode.react) only matters on the check-in
+          // screens, which are behind the sign-in.
+          manualChunks(id) {
+            if (id.includes("html5-qrcode") || id.includes("qrcode.react")) {
+              return "qr";
+            }
+          },
         },
       },
     },
-  },
+  };
 });
