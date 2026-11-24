@@ -125,9 +125,10 @@ Web Google sign-in is unaffected by this flag.
   “Deleted account,” and archives a program where the person was the only
   director. This is school-record behavior, not a bug.
 - **iPhone only, portrait only.** iPad is not a target at 1.0.0.
-- **The keyboard is native-resized, not separately tested on every device.**
-  The default layout fits a 390x844 iPhone; a very short device with the keyboard
-  open may still scroll.
+- **The keyboard is native-resized and scrolls the focused field into view.**
+  The shell listens for the iOS keyboard show events and centers the focused
+  control after the body resize. This is covered by the simulator build and the
+  auth layout checks, not by every physical device size.
 
 ## Verification status
 
@@ -139,6 +140,26 @@ npm run build
 npx cap sync ios
 ```
 
-The QA suite, Playwright, the simulator and screenshots were deliberately not
-run in this pass. They remain required before an external TestFlight group or
-App Store submission if behavior changed after this document was written.
+The release checks run after the native keyboard change were:
+
+```bash
+npm run typecheck
+npm run build
+npx cap sync ios
+npm run test:qa
+xcodebuild -project ios/App/App.xcodeproj -scheme App \
+  -configuration Debug -sdk iphonesimulator \
+  -destination 'platform=iOS Simulator,id=B79F0A91-3B63-4A64-AD9E-2A071325165B' \
+  build CODE_SIGNING_ALLOWED=NO
+bash scripts/dev/verify_migrations_locally.sh
+```
+
+The QA suite passed all 101 tests, the simulator build succeeded, the app
+launched on the iPhone 15 simulator, and the local database run applied 57
+migrations with 28 suites passing (one legacy-schema suite skipped).
+
+A focused browser diagnostic at a 390x844 iPhone viewport, with a fake camera,
+confirmed that the scan pane opens a square inline video with non-zero frames
+and no horizontal overflow. The simulator has no camera and no physical iPhone
+was attached, so a real on-device QR scan is still required. Screenshots were
+not part of this pass.

@@ -29,6 +29,26 @@ export function initNativeShell(): void {
 
   void Keyboard.setResizeMode({ mode: KeyboardResize.Body }).catch(() => undefined);
 
+  /**
+   * WKWebView resizes the body when the keyboard opens, but a field near the
+   * bottom can still finish behind the keyboard. Scroll the focused control into
+   * view after the resize, not before it, so its final position is measured.
+   */
+  const keepFocusedFieldVisible = () => {
+    const active = document.activeElement;
+    if (!(active instanceof HTMLElement)) return;
+    window.setTimeout(() => {
+      const viewport = window.visualViewport;
+      const bottom = viewport ? viewport.offsetTop + viewport.height : window.innerHeight;
+      const rect = active.getBoundingClientRect();
+      if (rect.top >= 16 && rect.bottom <= bottom - 16) return;
+      active.scrollIntoView({ block: "center", inline: "nearest" });
+    }, 80);
+  };
+
+  void Keyboard.addListener("keyboardWillShow", keepFocusedFieldVisible).catch(() => undefined);
+  void Keyboard.addListener("keyboardDidShow", keepFocusedFieldVisible).catch(() => undefined);
+
   const setStatusBarStyle = () => {
     const dark = root.classList.contains("dark");
     // Capacitor's names describe the text: Light text on a dark page, Dark text

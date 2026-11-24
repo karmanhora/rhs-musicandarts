@@ -623,6 +623,12 @@ html.native-app body {
   overscroll-behavior: none;
 }
 
+html.native-app input,
+html.native-app textarea,
+html.native-app select {
+  scroll-margin-block: 5rem;
+}
+
 html.native-app button,
 html.native-app [role="button"],
 html.native-app nav,
