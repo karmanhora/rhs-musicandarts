@@ -64,9 +64,18 @@ export function QrScanner({
       instance = new Html5Qrcode(ELEMENT_ID, { verbose: false });
 
       await instance.start(
-        { facingMode: "environment" },
+        { facingMode: { ideal: "environment" } },
         {
           fps: 10,
+          aspectRatio: 1,
+          disableFlip: true,
+          // WKWebView needs explicit, modest constraints; an unbounded request
+          // can return a stream the inline video never renders.
+          videoConstraints: {
+            facingMode: { ideal: "environment" },
+            width: { ideal: 1280 },
+            height: { ideal: 1280 },
+          },
           qrbox: (width, height) => {
             const edge = Math.floor(Math.min(width, height) * 0.72);
             return { width: Math.min(edge, 320), height: Math.min(edge, 320) };
@@ -83,6 +92,19 @@ export function QrScanner({
           /* Per-frame "no QR found" is expected while the camera is searching. */
         }
       );
+
+      // html5-qrcode creates the video element itself. On iOS it must carry the
+      // playsinline attribute (not only the property) and fill the square well,
+      // or Safari may open a native player or render a zero-height frame.
+      const video = host.current?.querySelector<HTMLVideoElement>("video");
+      if (video) {
+        video.setAttribute("playsinline", "");
+        video.setAttribute("webkit-playsinline", "true");
+        video.muted = true;
+        video.style.width = "100%";
+        video.style.height = "100%";
+        video.style.objectFit = "cover";
+      }
 
       if (!cancelled) setCameraState("ready");
     })();
@@ -109,9 +131,13 @@ export function QrScanner({
 
   return (
     <div
-      className="relative mx-auto min-h-56 w-full max-w-sm overflow-hidden rounded-[var(--radius-panel)] border border-[var(--cue-border)] bg-[#111713] text-center text-sm text-white"
+      className="relative mx-auto aspect-square w-full max-w-sm overflow-hidden rounded-[var(--radius-panel)] border border-[var(--cue-border)] bg-[#111713] text-center text-sm text-white"
     >
-      <div id={ELEMENT_ID} ref={host} className="min-h-56 [&_video]:w-full" />
+      <div
+        id={ELEMENT_ID}
+        ref={host}
+        className="h-full w-full [&_video]:h-full [&_video]:w-full [&_video]:object-cover"
+      />
       {cameraState !== "ready" ? (
         <p
           className="pointer-events-none absolute inset-0 flex items-center justify-center px-6 py-8"
