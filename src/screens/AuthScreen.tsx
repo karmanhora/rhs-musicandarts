@@ -6,7 +6,7 @@ import { Alert, Button, Field, Input, SegmentedControl, useToast } from "../comp
 import { GoogleMark } from "../components/GoogleMark";
 import { APP_NAME, readAuthAudience, writeAuthAudience } from "../lib/constants";
 import type { AuthAudience } from "../lib/constants";
-import { isNativeApp } from "../lib/nativeAuth";
+import { isNativeApp, NATIVE_GOOGLE_SIGNIN } from "../lib/nativeAuth";
 import { useAuth } from "../hooks/useAuth";
 
 type AuthMode = "sign-in" | "sign-up" | "forgot" | "reset";
@@ -40,24 +40,23 @@ const AUDIENCE_COPY: Record<
 const MODE_COPY: Record<AuthMode, { title: string; aside: string; asideSub: string }> = {
   "sign-in": {
     title: "Sign in",
-    aside: "Sign in to your program.",
-    asideSub: "Your events, check-in, and attendance are waiting here.",
+    aside: "Welcome back.",
+    asideSub: "Use your school email and password.",
   },
   "sign-up": {
     title: "Create your account",
     aside: "Join your program.",
-    asideSub:
-      "Create your account, then enter the join code your director shared — or, as a teacher, the invitation code your school issued.",
+    asideSub: "Create your account, then enter your program code.",
   },
   forgot: {
     title: "Reset your password",
     aside: "Forgot your password?",
-    asideSub: "Tell us your email and we'll send you a link to set a new one.",
+    asideSub: "We'll email you a reset link.",
   },
   reset: {
     title: "Choose a new password",
     aside: "Set a new password.",
-    asideSub: "Pick something you'll remember — then you're straight back to your attendance.",
+    asideSub: "Then you're back to your programs.",
   },
 };
 
@@ -357,6 +356,9 @@ export function AuthScreen({ mode }: { mode: AuthMode }) {
           <Input
             inputMode="numeric"
             autoComplete="one-time-code"
+            autoCapitalize="none"
+            autoCorrect="off"
+            spellCheck={false}
             pattern="[0-9]*"
             maxLength={10}
             value={code}
@@ -444,7 +446,8 @@ export function AuthScreen({ mode }: { mode: AuthMode }) {
   /* --- the forms ---------------------------------------------------------- */
 
   const showsAudience = mode === "sign-up";
-  const supportsGoogle = mode === "sign-in" || mode === "sign-up";
+  const supportsGoogle =
+    (mode === "sign-in" || mode === "sign-up") && !(native && !NATIVE_GOOGLE_SIGNIN);
   const isSignIn = mode === "sign-in";
   const nativeSignUpNote =
     audience === "teacher"
@@ -469,7 +472,7 @@ export function AuthScreen({ mode }: { mode: AuthMode }) {
     <AuthLayout mode={mode}>
       {showsAudience ? (
         <SegmentedControl
-          className={`auth-audience ${native ? "mb-4" : "mb-5"}`}
+          className={`auth-audience ${native ? "mb-4" : "mb-3 md:mb-5"}`}
           value={audience}
           onChange={chooseAudience}
           options={[
@@ -483,32 +486,8 @@ export function AuthScreen({ mode }: { mode: AuthMode }) {
           below stays mounted with everything typed. The native shell carries
           the visible stage headline, so its form starts at the fields. */}
       {native ? null : (
-        <div key={showsAudience ? audience : mode} className="cue-stagger">
-          {mode === "sign-up" ? (
-            <div className="mb-1 flex items-center gap-3 md:hidden">
-              <Link
-                viewTransition
-                to="/"
-                aria-label="Back to the program"
-                className="motion-press inline-flex min-h-11 min-w-11 items-center justify-center rounded-[var(--radius-control)] text-[var(--cue-ink)]"
-              >
-                <ArrowLeft aria-hidden="true" className="h-5 w-5" />
-              </Link>
-              <img
-                src="/logo.svg"
-                alt=""
-                width={32}
-                height={32}
-                className="h-8 w-8 shrink-0 rounded-[8px]"
-              />
-              <h2 className="type-title whitespace-nowrap text-[1.25rem] leading-tight">Create account</h2>
-            </div>
-          ) : null}
-          <p
-            className={`type-label text-[var(--cue-green)]${
-              mode === "sign-up" ? " hidden md:block" : ""
-            }`}
-          >
+        <div key={showsAudience ? audience : mode} className="cue-stagger hidden md:block">
+          <p className="type-label text-[var(--cue-green)]">
             {isSignIn
               ? "Welcome back"
               : mode === "sign-up"
@@ -517,39 +496,18 @@ export function AuthScreen({ mode }: { mode: AuthMode }) {
                   ? "Password help"
                   : "Recovery link"}
           </p>
-          <h2
-            className={`type-title mt-2${mode === "sign-up" ? " hidden md:block" : ""}`}
-          >
+          <h2 className="type-title mt-2">
             {isSignIn ? "Sign in" : headline.title}
           </h2>
-          <p
-            className={`type-meta mt-2${
-              mode === "sign-up" ? " auth-web-signup-sub" : ""
-            }`}
-          >
-            {isSignIn ? (
-              "Sign in to open your programs and attendance."
-            ) : mode === "sign-up" ? (
-              <>
-                <span className="auth-web-signup-sub-full">{copy.signUpSub}</span>
-                <span className="auth-web-signup-sub-short">
-                  {audience === "teacher" ? "Use your school email." : "Use your program email."}
-                </span>
-              </>
-            ) : (
-              headline.asideSub
-            )}
+          <p className="type-meta mt-2">
+            {mode === "sign-up" ? copy.signUpSub : headline.asideSub}
           </p>
         </div>
       )}
 
       <form
         className={
-          native
-            ? "auth-stage-form"
-            : mode === "sign-up"
-              ? "auth-web-signup-form"
-              : "mt-4 space-y-3"
+          native ? "auth-stage-form" : "auth-web-form"
         }
         onSubmit={(e) => void submit(e)}
       >
@@ -573,8 +531,10 @@ export function AuthScreen({ mode }: { mode: AuthMode }) {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             placeholder="you@example.com"
-            autoComplete="email"
+            inputMode="email"
+            autoComplete={isSignIn || mode === "forgot" || mode === "reset" ? "username" : "email"}
             autoCapitalize="none"
+            autoCorrect="off"
             spellCheck={false}
             required
             className={stageInputClass(emailInvalid)}
@@ -608,6 +568,10 @@ export function AuthScreen({ mode }: { mode: AuthMode }) {
               onChange={(e) => setPassword(e.target.value)}
               placeholder="••••••••"
               autoComplete={isSignIn ? "current-password" : "new-password"}
+              inputMode="text"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
               required
               className={stageInputClass(passwordInvalid)}
               aria-invalid={passwordInvalid ? true : undefined}
@@ -624,6 +588,10 @@ export function AuthScreen({ mode }: { mode: AuthMode }) {
               onChange={(e) => setConfirm(e.target.value)}
               placeholder="••••••••"
               autoComplete="new-password"
+              inputMode="text"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
               required
               className={stageInputClass(confirmInvalid)}
               aria-invalid={confirmInvalid ? true : undefined}
@@ -811,8 +779,8 @@ export function AuthScreen({ mode }: { mode: AuthMode }) {
 /**
  * The two-panel shell every auth mode shares on desktop: the branded aside on
  * the left with the app icon and a way back to the landing page, and the form in
- * the panel on the right. On a phone, create account collapses to one compact
- * panel so it fits without a page scroll.
+ * the panel on the right. On a phone the aside becomes a slim title line and the
+ * form starts immediately, so every auth mode fits without a page scroll.
  */
 function AuthLayout({ mode, children }: { mode: AuthMode; children: ReactNode }) {
   const copy = MODE_COPY[mode];
@@ -821,19 +789,37 @@ function AuthLayout({ mode, children }: { mode: AuthMode; children: ReactNode })
     return <NativeAuthLayout mode={mode}>{children}</NativeAuthLayout>;
   }
 
+  const compactTitle: Record<AuthMode, string> = {
+    "sign-in": "Sign in",
+    "sign-up": "Create account",
+    forgot: "Forgot password",
+    reset: "New password",
+  };
+  const backTo = mode === "sign-in" ? "/" : "/sign-in";
+  const backLabel = mode === "sign-in" ? "Back to the program" : "Back to sign in";
+
   return (
-    <main
-      className={`safe-t flex min-h-full items-center justify-center overflow-y-auto bg-[var(--cue-page)] px-4 pb-0 pt-3 text-[var(--cue-ink)] sm:px-6 sm:pb-0 sm:pt-3${
-        mode === "sign-up" ? " auth-web-signup-main" : ""
-      }`}
-    >
-      <div className="grid w-full max-w-5xl grid-cols-1 overflow-hidden rounded-[var(--radius-panel)] border border-[var(--cue-line)] bg-[var(--cue-panel)] md:min-h-[540px] md:grid-cols-[minmax(0,0.75fr)_minmax(0,1.25fr)]">
-        <aside
-          className={`flex-col justify-between bg-[var(--cue-brand-panel)] p-5 text-[var(--cue-brand-ink)] sm:p-8 md:flex md:p-10 ${
-            mode === "sign-up" ? "hidden" : "flex"
-          }`}
-        >
-          <div>
+    <main className="auth-web-main safe-t flex min-h-full items-start justify-center overflow-y-auto bg-[var(--cue-page)] text-[var(--cue-ink)] sm:px-6 md:items-center">
+      <div className="auth-web-card grid w-full max-w-5xl grid-cols-1 overflow-hidden border border-[var(--cue-line)] bg-[var(--cue-panel)] md:min-h-[540px] md:grid-cols-[minmax(0,0.75fr)_minmax(0,1.25fr)] md:rounded-[var(--radius-panel)]">
+        <aside className="flex flex-row items-center gap-2 bg-[var(--cue-brand-panel)] px-3 py-1.5 text-[var(--cue-brand-ink)] md:flex-col md:justify-between md:p-10">
+          {/* On a phone the branded panel is one slim, useful line. The full
+              aside returns at md, where there is room for the two-panel shell. */}
+          <div className="flex min-w-0 items-center gap-2 md:hidden">
+            <Link
+              viewTransition
+              to={backTo}
+              aria-label={backLabel}
+              className="motion-press inline-flex min-h-11 min-w-11 items-center justify-center rounded-[var(--radius-control)] text-[var(--cue-brand-ink)]/80"
+            >
+              <ArrowLeft aria-hidden="true" className="h-5 w-5" />
+            </Link>
+            <img src="/logo.svg" alt="" width={28} height={28} className="h-7 w-7 rounded-[7px]" />
+            <p className="type-title truncate text-[1.0625rem] text-[var(--cue-brand-ink)]">
+              {compactTitle[mode]}
+            </p>
+          </div>
+
+          <div className="hidden md:block">
             <Link
               viewTransition
               to="/"
@@ -859,16 +845,12 @@ function AuthLayout({ mode, children }: { mode: AuthMode; children: ReactNode })
               {copy.asideSub}
             </p>
           </div>
-          <p className="type-label mt-8 text-[var(--cue-brand-ink)]/60">
+          <p className="type-label mt-8 hidden text-[var(--cue-brand-ink)]/60 md:block">
             Redmond High School · Music &amp; Arts
           </p>
         </aside>
 
-        <section
-          className={`flex items-center justify-center px-5 py-4 sm:px-9 sm:py-4 md:px-12${
-            mode === "sign-up" ? " auth-web-signup-section" : ""
-          }`}
-        >
+        <section className="auth-web-section flex items-center justify-center px-4 py-3 sm:px-9 sm:py-4 md:px-12">
           <div className="w-full max-w-md">{children}</div>
         </section>
       </div>
@@ -881,60 +863,40 @@ function AuthLayout({ mode, children }: { mode: AuthMode; children: ReactNode })
  *
  * Only the native build uses this stage. The website keeps its two-column auth
  * layout. The green hero and cream sheet are one normal-flow composition: the
- * sheet overlaps the panel by 28px and nothing is fixed. Create account uses a
- * compact version so its complete form fits a phone viewport; sign-in and the
- * password modes can still scroll when a short phone or the keyboard needs it.
+ * sheet overlaps the panel by 28px and nothing is fixed. Every mode uses the
+ * compact stage so sign-in, forgot and reset fit a phone viewport without a page
+ * scroll; the keyboard can still resize the page while a field is focused.
  */
 function NativeAuthLayout({ mode, children }: { mode: AuthMode; children: ReactNode }) {
   const showModeSwitch = mode === "sign-in" || mode === "sign-up";
   const compactSignup = mode === "sign-up";
-  const headlineLines: Record<AuthMode, [string, string]> = {
-    "sign-in": ["Welcome", "back"],
-    "sign-up": ["Join your", "program"],
-    forgot: ["Forgot your", "password"],
-    reset: ["Set a new", "password"],
+  const nativeHeadline: Record<AuthMode, string> = {
+    "sign-in": "Welcome back",
+    "sign-up": "Join your program",
+    forgot: "Forgot password",
+    reset: "New password",
   };
-  const [headlineLead, headlineLast] = headlineLines[mode];
 
   return (
     <main
-      className={`auth-stage min-h-full overflow-y-auto${compactSignup ? " auth-stage--signup" : ""}`}
+      className={`auth-stage auth-stage--compact min-h-full overflow-y-auto${compactSignup ? " auth-stage--signup" : ""}`}
     >
-      <header className={`auth-stage-hero${compactSignup ? " auth-stage-hero--compact" : ""}`}>
+      <header className="auth-stage-hero auth-stage-hero--compact">
         <StageStaff />
         <div className="auth-stage-hero-inner">
           <div className="auth-stage-lockup">
-            {compactSignup ? <StageAppIcon /> : <StageMark />}
+            <StageAppIcon />
             <div className="min-w-0">
               <p className="auth-stage-eyebrow">Redmond High School</p>
               <p className="auth-stage-product">Music &amp; Arts Attendance</p>
             </div>
           </div>
 
-          <h1
-            className={`auth-stage-headline${compactSignup ? " auth-stage-headline--compact" : ""}`}
-          >
-            {compactSignup ? (
-              <span className="auth-stage-headline-line">
-                Join your program
-                <span className="auth-stage-period">.</span>
-              </span>
-            ) : (
-              <>
-                <span className="auth-stage-headline-line">{headlineLead}</span>
-                <span className="auth-stage-headline-line">
-                  {headlineLast}
-                  <span className="auth-stage-period">.</span>
-                </span>
-              </>
-            )}
+          <h1 className="auth-stage-headline auth-stage-headline--compact">
+            {nativeHeadline[mode]}
+            <span className="auth-stage-period">.</span>
           </h1>
           <span aria-hidden="true" className="auth-stage-rule" />
-          {compactSignup ? null : (
-            <p className="auth-stage-subline">
-              Attendance, events and check-in for Band, Orchestra, Choir and Drama.
-            </p>
-          )}
         </div>
       </header>
 
@@ -971,7 +933,7 @@ function NativeAuthLayout({ mode, children }: { mode: AuthMode; children: ReactN
   );
 }
 
-/** The shipped app icon, shown on the native create-account lockup. */
+/** The shipped app icon, shown on every native auth lockup. */
 function StageAppIcon() {
   return (
     <span className="auth-stage-mark p-1.5" aria-hidden="true">
@@ -986,30 +948,7 @@ function StageAppIcon() {
   );
 }
 
-/** The native stage's cream app mark: green note, gold flag. */
-function StageMark() {
-  return (
-    <span className="auth-stage-mark" aria-hidden="true">
-      <svg viewBox="0 0 40 40" className="h-[26px] w-[26px]" focusable="false">
-        <ellipse
-          cx="15"
-          cy="28"
-          rx="6"
-          ry="4.4"
-          transform="rotate(-18 15 28)"
-          fill="var(--auth-stage-green)"
-        />
-        <rect x="19" y="8" width="2.4" height="20" rx="1.2" fill="var(--auth-stage-green)" />
-        <path
-          d="M21.4 8 C 27 9.4 30.4 13.2 31.1 18.8 C 28.4 14.8 25.1 12.4 21.4 11.5 Z"
-          fill="var(--auth-stage-gold)"
-        />
-      </svg>
-    </span>
-  );
-}
-
-/** Decorative staff lines and one gold eighth note, bleeding off the right. */
+/** Decorative staff lines, without any music glyph outside the landing page. */
 function StageStaff() {
   return (
     <svg
@@ -1025,11 +964,6 @@ function StageStaff() {
         <path d="M-24 234H444" />
         <path d="M-24 264H444" />
         <path d="M-24 294H444" />
-      </g>
-      <g transform="translate(360 234) rotate(6)" fill="var(--auth-stage-gold)" opacity="0.92">
-        <ellipse cx="0" cy="0" rx="12" ry="9" transform="rotate(-20)" />
-        <rect x="9" y="-92" width="4" height="92" rx="2" />
-        <path d="M13 -92 C 34 -86 45 -74 48 -52 C 38 -68 27 -78 13 -82 Z" />
       </g>
     </svg>
   );

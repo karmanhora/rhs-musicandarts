@@ -800,46 +800,50 @@ html.native-app nav * {
   letter-spacing: 0.05em;
 }
 
-/* Website sign-up only: on a phone the branded aside becomes a compact
- * icon-and-back row, and the form takes the full width. */
-.auth-web-signup-form {
+/* The browser auth shell. On phones the branded aside is one slim line and
+ * the form starts immediately, so sign-in, reset and forgot-password fit a
+ * 390x844 viewport without a page scroll. The two-panel layout returns at md. */
+.auth-web-main {
+  padding: calc(env(safe-area-inset-top, 0px) + 0.35rem) 1rem 0;
+}
+
+.auth-web-section {
+  padding: 0.75rem 1rem 1rem;
+}
+
+.auth-web-form {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  margin-top: 16px;
+  gap: 10px;
+  margin-top: 14px;
 }
 
-@media (max-width: 767px) {
-  .auth-web-signup-main {
-    padding-top: 0;
+.auth-web-form .auth-audience {
+  margin-bottom: 8px;
+}
+
+@media (min-width: 640px) {
+  .auth-web-main {
+    padding-top: calc(env(safe-area-inset-top, 0px) + 0.75rem);
+    padding-inline: 1.5rem;
   }
 
-  .auth-web-signup-section {
-    padding-top: 0;
-    padding-bottom: 0;
-  }
-
-  .auth-web-signup-form {
-    gap: 6px;
-    margin-top: 8px;
-  }
-
-  .auth-web-signup-sub {
-    margin-top: 4px;
+  .auth-web-section {
+    padding: 1rem 2.25rem;
   }
 }
 
-.auth-web-signup-sub-short {
-  display: none;
-}
-
-@media (max-width: 374px) {
-  .auth-web-signup-sub-full {
-    display: none;
+@media (min-width: 768px) {
+  .auth-web-main {
+    padding-top: 0.75rem;
   }
 
-  .auth-web-signup-sub-short {
-    display: inline;
+  .auth-web-section {
+    padding: 1rem 3rem;
+  }
+
+  .auth-web-form {
+    margin-top: 24px;
   }
 }
 
@@ -862,33 +866,35 @@ html.native-app nav * {
   margin-top: 10px;
 }
 
-.auth-stage--signup .auth-stage-sheet {
+/* Every native mode uses the compact stage now: sign-in, forgot and reset must
+ * fit an iPhone viewport without page scrolling, not only create account. */
+.auth-stage--compact .auth-stage-sheet {
   padding-top: 12px;
   padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 0.75rem);
 }
 
-.auth-stage--signup .auth-audience {
+.auth-stage--compact .auth-audience {
   margin-bottom: 8px;
 }
 
-.auth-stage--signup .auth-stage-form {
+.auth-stage--compact .auth-stage-form {
   gap: 8px;
   margin-top: 10px;
 }
 
-.auth-stage--signup .auth-stage-field > div:first-child {
+.auth-stage--compact .auth-stage-field > div:first-child {
   margin-bottom: 3px;
 }
 
-.auth-stage--signup .auth-stage-divider {
+.auth-stage--compact .auth-stage-divider {
   margin: 6px 0;
 }
 
-.auth-stage--signup .auth-stage-google-note {
+.auth-stage--compact .auth-stage-google-note {
   margin-top: 4px;
 }
 
-.auth-stage--signup .auth-stage-legal {
+.auth-stage--compact .auth-stage-legal {
   margin-top: 4px;
 }
 

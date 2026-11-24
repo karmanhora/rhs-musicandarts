@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { KeyRound, LogOut, Music, ShieldCheck, Users } from "lucide-react";
+import { KeyRound, LogOut, ShieldCheck, Users } from "lucide-react";
 import {
   Alert,
   Button,
@@ -153,7 +153,7 @@ export function JoinProgramScreen({ standalone = false }: { standalone?: boolean
       {app.mayStartProgram ? (
         <Card className="space-y-3">
           <div className="flex items-start gap-3">
-            <Music aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-[var(--cue-subtle)]" />
+            <Users aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-[var(--cue-subtle)]" />
             <div className="min-w-0">
               <p className="type-heading">Running a program of your own?</p>
               <p className="type-meta mt-1">

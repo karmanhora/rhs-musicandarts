@@ -8,15 +8,9 @@ export function MusicLoader() {
     <div className="music-loader" role="status" aria-label="Loading">
       {Array.from({ length: 3 }, (_, index) => (
         <span key={index} className="music-loader-icon" aria-hidden="true">
+          {/* Plain bars, not notes: musical glyphs belong to the landing page. */}
           <svg viewBox="0 0 100 100" fill="currentColor">
-            <ellipse
-              transform="rotate(-21.283 49.994 75.642)"
-              cx="50"
-              cy="75.651"
-              rx="19.347"
-              ry="16.432"
-            />
-            <path d="M58.474 7.5h10.258v63.568H58.474z" />
+            <rect x="44" y="18" width="12" height="64" rx="6" />
           </svg>
         </span>
       ))}
