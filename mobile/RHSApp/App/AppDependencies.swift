@@ -10,8 +10,8 @@ struct AppDependencies {
     /// Why the configuration could not be loaded, phrased for the person holding
     /// the phone (it names the file to fix).
     let configurationError: String?
-    let authSession: (any AuthSessionProviding)?
-    let roleResolver: any RoleResolving
+    let auth: (any AuthServicing)?
+    let roleResolver: (any RoleResolving)?
     /// Debug-only: a role forced by launch argument, for Simulator navigation.
     let demoRole: AppRole?
 
@@ -45,8 +45,8 @@ struct AppDependencies {
             return AppDependencies(
                 configuration: nil,
                 configurationError: configurationError,
-                authSession: nil,
-                roleResolver: PendingRoleResolver(),
+                auth: nil,
+                roleResolver: nil,
                 demoRole: options.demoRole
             )
         }
@@ -56,8 +56,8 @@ struct AppDependencies {
         return AppDependencies(
             configuration: configuration,
             configurationError: nil,
-            authSession: SupabaseAuthSessionService(client: container.client),
-            roleResolver: PendingRoleResolver(),
+            auth: SupabaseAuthService(client: container.client, configuration: configuration),
+            roleResolver: SupabaseRoleResolver(client: container.client),
             demoRole: options.demoRole
         )
     }

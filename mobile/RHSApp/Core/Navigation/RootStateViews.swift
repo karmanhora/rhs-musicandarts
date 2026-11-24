@@ -69,76 +69,8 @@ struct ConfigurationRequiredView: View {
     }
 }
 
-/// Nobody is signed in. Phase 1 has no sign-in form yet, so this screen states
-/// the plan and the live backend connection rather than offering a dead button.
-struct SignedOutView: View {
-    @Environment(AppState.self) private var app
-
-    var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: Spacing.lg) {
-                BrandMark()
-
-                VStack(alignment: .leading, spacing: Spacing.sm) {
-                    Text(app.configuration?.displayName ?? "RHS Music & Arts")
-                        .font(Typography.label)
-                        .tracking(1.4)
-                        .textCase(.uppercase)
-                        .foregroundStyle(Palette.secondaryInk)
-                    Text("Attendance, without the clipboard.")
-                        .font(Typography.title)
-                        .foregroundStyle(Palette.ink)
-                        .fixedSize(horizontal: false, vertical: true)
-                    Text("A native app for Redmond High School's music and arts programs. Check in, see your record, and — for staff — run the roll.")
-                        .font(Typography.body)
-                        .foregroundStyle(Palette.secondaryInk)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-
-                Rectangle()
-                    .fill(Palette.separator)
-                    .frame(height: Layout.hairline)
-
-                VStack(alignment: .leading, spacing: Spacing.sm) {
-                    Text("Sign-in arrives in the next phase")
-                        .font(Typography.heading)
-                        .foregroundStyle(Palette.ink)
-                    Text("Email and password, Google, and — if App Store review requires it because Google is offered — Sign in with Apple. Every method resolves to the same Supabase identity and the existing profile and membership rows.")
-                        .font(Typography.body)
-                        .foregroundStyle(Palette.secondaryInk)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-
-                if let callback = app.lastAuthCallback {
-                    Text("Auth callback received: \(callback.absoluteString)")
-                        .font(Typography.meta)
-                        .foregroundStyle(Palette.secondaryInk)
-                        .padding(.top, Spacing.xs)
-                }
-
-                if let host = app.backendHost {
-                    HStack(spacing: Spacing.xs) {
-                        Circle()
-                            .fill(Palette.brand)
-                            .frame(width: 6, height: 6)
-                        Text("Supabase client ready — \(host)")
-                            .font(Typography.meta)
-                            .foregroundStyle(Palette.secondaryInk)
-                    }
-                    .padding(.top, Spacing.sm)
-                    .accessibilityElement(children: .combine)
-                }
-
-                PhaseNote()
-            }
-            .padding(.horizontal, Layout.screenPadding)
-            .padding(.vertical, Spacing.xl)
-        }
-    }
-}
-
-/// Signed in, but the database has not said whether this account is a student or
-/// staff. Saying so is the correct behaviour: the app must not assume.
+/// Signed in, but the membership answer has not arrived yet. It is a brief
+/// state; the app never fills it with a guessed role.
 struct RolePendingView: View {
     let user: AuthenticatedUser
 
@@ -151,7 +83,7 @@ struct RolePendingView: View {
                         .tracking(1.4)
                         .textCase(.uppercase)
                         .foregroundStyle(Palette.secondaryInk)
-                    Text("Checking your access")
+                    Text("Looking up your program access")
                         .font(Typography.title)
                         .foregroundStyle(Palette.ink)
                     Text(user.email ?? "This account has no email address.")
@@ -166,21 +98,86 @@ struct RolePendingView: View {
                 HStack(spacing: Spacing.sm) {
                     ProgressView()
                         .tint(Palette.brand)
-                    Text("Waiting for the program and capability data that decides which shell opens.")
+                    Text("Asking the database which programs you belong to and what you may do in them.")
                         .font(Typography.body)
                         .foregroundStyle(Palette.secondaryInk)
                         .fixedSize(horizontal: false, vertical: true)
                 }
-
-                Text("The server decides, not this app. Role names live on memberships, and staff capability is resolved by the database's permission function, so a person can be a student in one program and staff in another.")
-                    .font(Typography.meta)
-                    .foregroundStyle(Palette.secondaryInk)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                PhaseNote()
             }
             .padding(.horizontal, Layout.screenPadding)
             .padding(.vertical, Spacing.xl)
+        }
+    }
+}
+
+/// Signed in, but on no active roster. Joining is a director's join code, and
+/// that flow is not built yet — so this screen says so instead of offering a
+/// form the backend would refuse.
+struct NoProgramAccessView: View {
+    let user: AuthenticatedUser
+
+    @Environment(AppState.self) private var app
+    @State private var confirmingSignOut = false
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: Spacing.lg) {
+                BrandMark()
+
+                VStack(alignment: .leading, spacing: Spacing.sm) {
+                    Text("Signed in")
+                        .font(Typography.label)
+                        .tracking(1.4)
+                        .textCase(.uppercase)
+                        .foregroundStyle(Palette.secondaryInk)
+                    Text("You're not on a program yet.")
+                        .font(Typography.title)
+                        .foregroundStyle(Palette.ink)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text(user.email ?? "This account has no email address.")
+                        .font(Typography.body)
+                        .foregroundStyle(Palette.secondaryInk)
+                }
+
+                Rectangle()
+                    .fill(Palette.separator)
+                    .frame(height: Layout.hairline)
+
+                Text("Your account exists, but no program's roster includes it. Students join with the code their director gives them; teachers redeem an invitation code from the school. Those two screens arrive in the next phase — neither flow can be shortcut from here.")
+                    .font(Typography.body)
+                    .foregroundStyle(Palette.secondaryInk)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Button(role: .destructive) {
+                    confirmingSignOut = true
+                } label: {
+                    Text("Sign out")
+                        .font(Typography.bodyEmphasis)
+                        .frame(maxWidth: .infinity, minHeight: Layout.tapTarget)
+                }
+                .buttonStyle(.bordered)
+
+                if let actionError = app.actionError {
+                    Text(actionError)
+                        .font(Typography.meta)
+                        .foregroundStyle(Palette.attention)
+                }
+            }
+            .padding(.horizontal, Layout.screenPadding)
+            .padding(.vertical, Spacing.xl)
+        }
+        .background(Palette.canvas)
+        .confirmationDialog(
+            "Sign out of this device?",
+            isPresented: $confirmingSignOut,
+            titleVisibility: .visible
+        ) {
+            Button("Sign out", role: .destructive) {
+                Task { await app.signOut() }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Your saved session is removed from this device's Keychain.")
         }
     }
 }

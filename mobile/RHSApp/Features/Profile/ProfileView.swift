@@ -39,7 +39,7 @@ struct ProfileView: View {
 
             Section("Access") {
                 LabeledContent("Role") {
-                    Text(app.role?.title ?? "Awaiting the server")
+                    Text(app.role?.title ?? (app.noProgramAccess ? "No program yet" : "Awaiting the server"))
                 }
                 LabeledContent("Program") {
                     Text("Chosen in the next phase")

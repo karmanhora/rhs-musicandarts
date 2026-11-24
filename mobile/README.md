@@ -4,10 +4,13 @@ A SwiftUI application for Redmond High School's music and arts programs, built
 alongside the existing website and Capacitor app. It talks to the **same**
 Supabase project, database, auth and RLS policies — there is no second backend.
 
-**Status: Phase 1 — foundation only.** There is no sign-in form, no attendance
-query and no check-in yet. What exists is a runnable app target, a validated
-configuration, a Supabase client, session restoration, role-aware navigation and
-placeholder screens.
+**Status: Phase 2 in progress.** Email/password sign-in and registration, email
+confirmation, password recovery, session restoration and sign-out are
+implemented against the existing Supabase identity. Signing in resolves the
+person's own profile, active memberships and `is_program_admin()` to choose the
+student or staff shell — or to say, honestly, that no roster includes them.
+Attendance, check-in, the join flow and teacher-invitation redemption are not
+built yet; every attendance screen is still a labelled placeholder.
 
 | | |
 | --- | --- |
@@ -35,6 +38,11 @@ cp mobile/Config/Local.example.xcconfig mobile/Config/Local.xcconfig
 
 `Local.xcconfig` is gitignored. In xcconfig syntax `//` starts a comment, so the
 URL keeps Xcode's empty-substitution escape: `https:/$()/project.supabase.co`.
+
+A Debug build may point at a loopback Supabase stack (`http://127.0.0.1:54321`);
+`AppConfiguration` accepts plain http only for a loopback host, and
+`Info.plist` carries `NSAllowsLocalNetworking` for that case. Remote hosts still
+require https.
 
 Both values are public by design: the publishable key grants nothing on its own
 because every table is behind RLS. **A service-role key is refused at launch** —
@@ -133,10 +141,10 @@ must produce the same `auth.users` identity, which the database resolves:
 | --- | --- |
 | Session restoration + token refresh | Implemented |
 | Sign-out | Implemented |
-| Email/password sign-in and registration | Phase 2 |
-| Email confirmation (`verifyOtp`, length is the project's OTP length) | Phase 2 |
-| Password recovery (deep link, then `updateUser`) | Phase 2 |
-| Google OAuth (system browser + custom-scheme return) | Phase 2 |
+| Email/password sign-in and registration | Implemented |
+| Email confirmation (link callback or the emailed code, via `verifyOTP`) | Implemented |
+| Password recovery (link callback, then a new password) | Implemented |
+| Google OAuth (system browser + custom-scheme return) | Not built — see below |
 | Sign in with Apple | Not built — see below |
 | Account linking | **Not implemented, deliberately** |
 
@@ -160,8 +168,10 @@ App Store guideline 4.8 requires an equivalent privacy-preserving option when a
 third-party login (Google) is offered. The Capacitor build avoids this by
 shipping email/password only (`docs/IOS.md`). If the native app offers Google, it
 must also offer Sign in with Apple, with the Apple provider configured in
-Supabase and an Apple Developer entitlement and key. Neither exists today. That
-is a product decision, not something this foundation silently chooses.
+Supabase and an Apple Developer entitlement and key. Neither exists today, and
+neither redirect URL is registered in Supabase yet — which is why Phase 2 ships
+email/password only. That is a product decision, not something this code
+silently chooses.
 
 ### Required external configuration (not applied)
 
@@ -190,13 +200,18 @@ server still authorises every read and write.
 | Attendance | Roster |
 | Profile | Profile |
 
-**The app does not decide a role from a local setting.** `RoleResolving` is a
-Phase 1 placeholder (`PendingRoleResolver`) that returns no answer, so a
-signed-in account stays on "Checking your access" rather than being assumed a
-student. Phase 2 resolves it from the backend: memberships and staff capability
-through `has_permission()` / `my_permissions()` (migration 029), because a person
-can be a student in one program and staff in another. The program switcher comes
-with it.
+**The app does not decide a role from a local setting.** `SupabaseRoleResolver`
+asks the backend: the person's own profile (`profiles.auth_user_id`), their
+active `memberships` roles, and `is_program_admin()`. Any staff system role
+(`director`, `secretary`, `section_leader`) or a system administrator opens the
+staff shell; student memberships open the student shell; no active membership
+shows "You're not on a program yet" with no form the backend would refuse.
+
+This is the first slice of the capability layer, not the whole of it. Custom
+roles, section-scoped staff and the program switcher need `my_permissions()` per
+program (migration 029) and arrive with the program screens; until then a
+custom-role-only staff member sees the narrower student shell. A person who is
+staff in one program and a student in another is not yet switched per program.
 
 ## Design system
 
@@ -210,19 +225,31 @@ not a card per element; there are no gradients, no React screens and no
 `Resources/Assets.xcassets` holds the accent colour, the brand green, the launch
 background and an **empty** app-icon slot. The real icon artwork is Phase 2.
 
-## Verification (Phase 1)
+## Verification
 
-Recorded from the run that produced this folder:
+Recorded from the runs that produced this folder:
 
-- `xcodebuild … build` — succeeded (Simulator, Debug).
-- `xcodebuild … test` — configuration, navigation and app-state suites passed.
-- App installed and launched on the iPhone 17e Simulator, including the
-  `-RHSPreviewConfiguration -RHSDemoRole` navigation check.
-- `npm run typecheck` and `npm run build` at the repository root — unchanged and
-  passing; the website was not modified.
+- `xcodebuild … test` — 43 unit tests passed: configuration and key safety,
+  navigation, app state, callback parsing and role mapping.
+- App built and launched on the iPhone 17e Simulator with the real local config;
+  the sign-in screen was captured (`DerivedData/screenshots/auth-local.png`,
+  gitignored), as were the student and staff shells via the Debug demo session.
+- **Live auth against the local Supabase stack** (`supabase --workdir .devstack
+  start`, values from `.env.local`): a real sign-up produced a session, sign-out
+  succeeded, and the same email and password signed back in. With confirmations
+  temporarily enabled, a second sign-up required confirmation; its email was
+  read from the local Mailpit inbox, the confirmation link was verified, and
+  password sign-in followed. Both checks ran through `SupabaseAuthService`
+  inside the app's test host. Local-only test users remain in the dev stack.
+- `npm run typecheck`, `npm run build` and `npm run test:qa` at the repository
+  root — passing; the website was not modified.
 
-The scanner is camera-only, so a real scan cannot be verified in the Simulator —
-and it does not exist yet in any case. No physical-device run was performed.
+**Not verified:** the hosted project's auth. The local stack's default
+confirmation template sends a link, not a numeric code, so the six-digit
+`confirmEmail` path and the app's own deep-link handling were not exercised end
+to end (the link's token was verified through the SDK). Google and Apple sign-in
+remain unbuilt. No physical-device run was performed, and the scanner
+(camera-only) does not exist yet.
 
 ## What is deliberately not here
 

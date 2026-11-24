@@ -2,12 +2,11 @@ import Foundation
 import Observation
 
 /// The app's single piece of top-level state: whether the build is configured,
-/// whether somebody is signed in, and — once the backend has answered — which
-/// navigation shell to show.
+/// whether somebody is signed in, and what the backend says they can reach.
 ///
-/// It never decides a role from a local preference. A signed-in person stays at
-/// `.signedIn` with no `role` until the server-backed resolver answers, and the
-/// UI says so rather than guessing "student".
+/// It never decides a role from a local preference. A signed-in person waits on
+/// the membership answer, and a person on no roster is told that rather than
+/// being given a shell they have no rights in.
 @MainActor
 @Observable
 final class AppState {
@@ -22,18 +21,23 @@ final class AppState {
     }
 
     private(set) var phase: Phase = .loading
-    /// `nil` while the backend has not told us the role. See `RoleResolving`.
+    /// `nil` until the backend answers. See `RoleResolving`.
     private(set) var role: AppRole?
-    /// The most recent auth deep link this build accepted (Phase 1 records it;
-    /// Phase 2 exchanges it for a session).
+    /// Signed in, but on no active roster.
+    private(set) var noProgramAccess = false
+    /// A recovery link was followed: set a new password before anything else.
+    private(set) var recoveryInProgress = false
+    /// The most recent auth deep link this build accepted.
     private(set) var lastAuthCallback: URL?
+    /// A problem with a link or a callback, shown on the auth screen.
+    private(set) var authError: String?
     /// A failure from an action (sign-out), shown by the screen that started it.
     private(set) var actionError: String?
-    /// True only for a Debug build launched with `-RHSDemoRole`. No Supabase
-    /// account is signed in; the shell is being shown locally for navigation.
+    /// True only for a Debug build launched with `-RHSDemoRole`.
     private(set) var isDemoSession = false
 
     private let dependencies: AppDependencies
+    private var auth: (any AuthServicing)? { dependencies.auth }
 
     init(dependencies: AppDependencies) {
         self.dependencies = dependencies
@@ -68,18 +72,18 @@ final class AppState {
             return
         }
 
-        guard let authSession = dependencies.authSession else {
+        guard let auth, dependencies.roleResolver != nil else {
             phase = .configurationRequired("This build could not create a Supabase client.")
             return
         }
 
         phase = .loading
         do {
-            if let user = try await authSession.currentUser() {
-                phase = .signedIn(user)
-                try await resolveRole(for: user)
+            if let user = try await auth.currentUser() {
+                await adopt(user)
             } else {
                 role = nil
+                noProgramAccess = false
                 phase = .signedOut
             }
         } catch {
@@ -87,20 +91,77 @@ final class AppState {
         }
     }
 
+    // MARK: - Email and password
+
+    func signIn(email: String, password: String) async throws {
+        guard let auth else { throw AuthUnavailable() }
+        let user = try await auth.signIn(email: email, password: password)
+        await adopt(user)
+    }
+
+    func signUp(
+        email: String,
+        password: String,
+        audience: AuthAudience,
+        displayName: String?
+    ) async throws -> SignUpOutcome {
+        guard let auth else { throw AuthUnavailable() }
+        let outcome = try await auth.signUp(
+            email: email,
+            password: password,
+            audience: audience,
+            displayName: displayName
+        )
+        if case .signedIn(let user) = outcome { await adopt(user) }
+        return outcome
+    }
+
+    /// Confirms with the code from the signup email. A confirmed address has a
+    /// session, so this adopts the user like a sign-in.
+    func confirmEmail(email: String, code: String) async throws {
+        guard let auth else { throw AuthUnavailable() }
+        if let user = try await auth.confirmEmail(email: email, code: code) {
+            await adopt(user)
+        } else if let user = try await auth.currentUser() {
+            await adopt(user)
+        }
+    }
+
+    func resendConfirmation(email: String) async throws {
+        guard let auth else { throw AuthUnavailable() }
+        try await auth.resendConfirmation(email: email)
+    }
+
+    func requestPasswordReset(email: String) async throws {
+        guard let auth else { throw AuthUnavailable() }
+        try await auth.requestPasswordReset(email: email)
+    }
+
+    func updatePassword(_ password: String) async throws {
+        guard let auth else { throw AuthUnavailable() }
+        try await auth.updatePassword(password)
+        recoveryInProgress = false
+        if let user = try await auth.currentUser() { await adopt(user) }
+    }
+
+    func dismissRecovery() {
+        recoveryInProgress = false
+    }
+
+    // MARK: - Session
+
     func signOut() async {
         actionError = nil
         do {
-            try await dependencies.authSession?.signOut()
+            try await auth?.signOut()
             role = nil
+            noProgramAccess = false
+            recoveryInProgress = false
             isDemoSession = false
             phase = .signedOut
         } catch {
             actionError = ErrorMessage.text(for: error)
         }
-    }
-
-    func clearActionError() {
-        actionError = nil
     }
 
     /// Accepts only this build's registered callback. The scheme is derived from
@@ -114,14 +175,58 @@ final class AppState {
             return
         }
         lastAuthCallback = url
+        Task { await completeAuthentication(from: url) }
     }
 
-    private func resolveRole(for user: AuthenticatedUser) async throws {
+    func completeAuthentication(from url: URL) async {
+        guard let auth else { return }
+        do {
+            switch try await auth.completeAuthentication(from: url) {
+            case .unhandled:
+                return
+            case .failure(let message):
+                authError = message
+            case .completed(let recovery):
+                authError = nil
+                if let user = try await auth.currentUser() { await adopt(user) }
+                if recovery { recoveryInProgress = true }
+            }
+        } catch {
+            authError = AuthMessages.readable(error)
+        }
+    }
+
+    func clearAuthError() {
+        authError = nil
+    }
+
+    func clearActionError() {
+        actionError = nil
+    }
+
+    // MARK: - Access
+
+    private func adopt(_ user: AuthenticatedUser) async {
+        phase = .signedIn(user)
+        role = nil
+        noProgramAccess = false
+
         if let demoRole = dependencies.demoRole {
+            isDemoSession = true
             role = demoRole
             return
         }
-        role = try await dependencies.roleResolver.resolveRole(for: user)
-    }
 
+        guard let resolver = dependencies.roleResolver else { return }
+        do {
+            switch try await resolver.resolveRole(for: user) {
+            case .shell(let shell):
+                role = shell
+            case .noProgramAccess:
+                noProgramAccess = true
+            }
+        } catch {
+            phase = .failed(ErrorMessage.text(for: error))
+        }
+    }
 }

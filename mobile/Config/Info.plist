@@ -36,6 +36,16 @@
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 
+	<!-- The development build may point at the local Supabase stack over plain
+	     http (AppConfiguration only allows that for a loopback host). This
+	     relaxes App Transport Security for local networking only; remote hosts
+	     still require https. -->
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
+
 	<!-- Auth callback. The scheme equals the build's bundle identifier, so the
 	     development build answers org.rhsattendance.native.dev://auth-callback
 	     and the production build answers org.rhsattendance.native://auth-callback.

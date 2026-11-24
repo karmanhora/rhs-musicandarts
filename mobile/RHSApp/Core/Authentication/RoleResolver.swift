@@ -1,29 +1,79 @@
 import Foundation
+import Supabase
 
-/// Decides which navigation shell a signed-in person sees.
-///
-/// The answer must come from the database, never from a local setting or from
-/// the signup audience the person typed. The website's authority is
-/// `public.has_permission(ensemble, code)` (migration 029) with `my_permissions()`
-/// returning the caller's capabilities; Phase 2 resolves this interface through
-/// that data, treating staff capability — not a role name — as "teacher".
-@MainActor
-protocol RoleResolving {
-    /// `.student` or `.teacher` for this account, or `nil` while the answer is
-    /// not available. Throwing means the question could not be asked.
-    func resolveRole(for user: AuthenticatedUser) async throws -> AppRole?
+/// What the backend says this account can reach.
+enum RoleResolution: Equatable {
+    /// A navigation shell. Presentation only — the server still authorises
+    /// every read and write.
+    case shell(AppRole)
+    /// Signed in, but on no active roster. The join flow (a director's code) is
+    /// the next phase; nothing is assumed.
+    case noProgramAccess
 }
 
-/// Phase 1 deliberately answers "not yet".
+/// Decides which shell a signed-in person sees, from the database.
 ///
-/// Mapping a signed-in account to a program and its capabilities needs the
-/// program switcher (a person can be a student in one program and staff in
-/// another), which is Phase 2 work. Returning `nil` keeps the app honest: it
-/// shows a "checking your access" screen instead of assuming student or teacher.
-/// The Debug `-RHSDemoRole` launch argument is the only way to see a shell before
-/// that query exists.
-struct PendingRoleResolver: RoleResolving {
-    func resolveRole(for user: AuthenticatedUser) async throws -> AppRole? {
-        nil
+/// This is the first slice of the capability layer: it reads the person's own
+/// profile, their active memberships and `is_program_admin()`. It treats staff
+/// system roles as the staff shell. Program-scoped capability resolution
+/// (`my_permissions()` per program, custom roles, the program switcher) arrives
+/// with the program layer; until then a custom-role-only staff member sees the
+/// student shell, which is narrower than their rights and never wider.
+@MainActor
+protocol RoleResolving {
+    func resolveRole(for user: AuthenticatedUser) async throws -> RoleResolution
+}
+
+struct SupabaseRoleResolver: RoleResolving {
+    let client: SupabaseClient
+
+    private struct ProfileRow: Decodable {
+        let id: UUID
+    }
+
+    private struct MembershipRow: Decodable {
+        let roles: [String]
+    }
+
+    private nonisolated static let staffRoles: Set<String> = ["director", "secretary", "section_leader"]
+
+    func resolveRole(for user: AuthenticatedUser) async throws -> RoleResolution {
+        // `auth_user_id` is not in the public profile columns; it is only the
+        // lookup key, and RLS limits this select to rows the caller may see.
+        let profiles: [ProfileRow] = try await client
+            .from("profiles")
+            .select("id")
+            .eq("auth_user_id", value: user.id)
+            .limit(1)
+            .execute()
+            .value
+
+        guard let profile = profiles.first else {
+            // No profile yet: `join_program()` creates it on the first join.
+            return .noProgramAccess
+        }
+
+        let memberships: [MembershipRow] = try await client
+            .from("memberships")
+            .select("roles")
+            .eq("user_id", value: profile.id.uuidString)
+            .eq("active", value: true)
+            .execute()
+            .value
+
+        guard !memberships.isEmpty else { return .noProgramAccess }
+
+        let isProgramAdmin: Bool = try await client
+            .rpc("is_program_admin")
+            .execute()
+            .value
+
+        return Self.resolution(roles: memberships.flatMap(\.roles), isProgramAdmin: isProgramAdmin)
+    }
+
+    /// Pure mapping, kept separate so the rule is testable without a database.
+    nonisolated static func resolution(roles: [String], isProgramAdmin: Bool) -> RoleResolution {
+        if isProgramAdmin { return .shell(.teacher) }
+        return roles.contains(where: staffRoles.contains) ? .shell(.teacher) : .shell(.student)
     }
 }
