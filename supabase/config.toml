@@ -44,6 +44,10 @@ additional_redirect_urls = [
   "https://redmond-music-arts-program-mandalora.vercel.app/reset-password",
   # Local development — both call sites above, on the Vite dev server.
   "http://localhost:5173/**",
+  # The iOS app hands email confirmation and password recovery back to the
+  # native shell through this custom scheme. src/lib/nativeAuth.ts and
+  # ios/App/App/Info.plist use the same value; keep it in the hosted allowlist.
+  "org.rhsattendance.app://auth-callback",
 ]
 
 [auth.email]
